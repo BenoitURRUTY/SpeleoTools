@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SpeleoToolsDialog</class>
+ <widget class="QDialog" name="SpeleoToolsDialog">
+  <property name="windowTitle">
+   <string>Speleo Tools</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QTabWidget" name="tabWidget">
+     <property name="tabPosition">
+      <enum>QTabWidget::North</enum>
+     </property>
+
+     <!-- Onglet 1 : Import & Styles -->
+     <widget class="QWidget" name="tabImport">
+      <attribute name="title">
+       <string>Import &amp; Styles</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="layoutImport">
+       <item>
+        <widget class="QLabel" name="lblImport">
+         <property name="text">
+          <string>Importer une couche spéléo (Therion, shapefile, etc.)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnImport">
+         <property name="text">
+          <string>Importer un fichier...</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblStyle">
+         <property name="text">
+          <string>Appliquer un style prédéfini</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QComboBox" name="comboStyle">
+         <item>
+          <property name="text">
+           <string>Therion</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Cheminement</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Entrées</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Habillage</string>
+          </property>
+         </item>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnApplyStyle">
+         <property name="text">
+          <string>Appliquer le style</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- Onglet 2 : Épaisseur de roche -->
+     <widget class="QWidget" name="tabThickness">
+      <attribute name="title">
+       <string>Épaisseur de roche</string>
+      </attribute>
+      <layout class="QFormLayout" name="layoutThickness">
+       <item row="0" column="0">
+        <widget class="QLabel" name="lblDEM">
+         <property name="text">
+          <string>Modèle Numérique de Terrain (DEM)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QComboBox" name="comboDEM"/>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="lblCave">
+         <property name="text">
+          <string>Couche de cavité / cheminement</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QComboBox" name="comboCave"/>
+       </item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="lblOutput">
+         <property name="text">
+          <string>Fichier de sortie (GeoPackage)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="1">
+        <layout class="QHBoxLayout" name="layoutOutput">
+         <item>
+          <widget class="QLineEdit" name="lineOutput"/>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnBrowse">
+           <property name="text">
+            <string>Parcourir…</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item row="3" column="1">
+        <widget class="QPushButton" name="btnRunThickness">
+         <property name="text">
+          <string>Calculer l'épaisseur de roche</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0" colspan="2">
+        <widget class="QProgressBar" name="progressThickness">
+         <property name="minimum">
+          <number>0</number>
+         </property>
+         <property name="maximum">
+          <number>100</number>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- Onglet 3 : Profils & 3D -->
+     <widget class="QWidget" name="tabProfile">
+      <attribute name="title">
+       <string>Profils &amp; 3D</string>
+      </attribute>
+      <layout class="QGridLayout" name="layoutProfile">
+       <item row="0" column="0">
+        <widget class="QLabel" name="lblProfileLayer">
+         <property name="text">
+          <string>Couche de cheminement 3D</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QComboBox" name="comboProfileLayer"/>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="lblDEM2">
+         <property name="text">
+          <string>DEM pour profil</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QComboBox" name="comboDEM2"/>
+       </item>
+       <item row="2" column="0" colspan="2">
+        <widget class="QCheckBox" name="chkProjection">
+         <property name="text">
+          <string>Afficher la projection verticale 3D</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0" colspan="2">
+        <widget class="QPushButton" name="btnGenerateProfile">
+         <property name="text">
+          <string>Générer le profil développé</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0" colspan="2">
+        <widget class="QGraphicsView" name="viewProfile">
+         <property name="minimumSize">
+          <size>
+           <width>400</width>
+           <height>200</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- Onglet 4 : Prospection -->
+     <widget class="QWidget" name="tabProspect">
+      <attribute name="title">
+       <string>Prospection (MNT)</string>
+      </attribute>
+      <layout class="QGridLayout" name="layoutProspect">
+       <item row="0" column="0">
+        <widget class="QLabel" name="lblProspectDEM">
+         <property name="text">
+          <string>Modèle Numérique de Terrain</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QComboBox" name="comboProspectDEM"/>
+       </item>
+       <item row="1" column="0" colspan="2">
+        <widget class="QCheckBox" name="chkHillshade">
+         <property name="text">
+          <string>Calculer ombrage (hillshade)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0" colspan="2">
+        <widget class="QCheckBox" name="chkSlope">
+         <property name="text">
+          <string>Calculer pente</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0" colspan="2">
+        <widget class="QCheckBox" name="chkLowPoints">
+         <property name="text">
+          <string>Identifier les points bas (prospection)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0" colspan="2">
+        <widget class="QPushButton" name="btnRunProspect">
+         <property name="text">
+          <string>Lancer l'analyse</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="0" colspan="2">
+        <widget class="QProgressBar" name="progressProspect">
+         <property name="minimum">
+          <number>0</number>
+         </property>
+         <property name="maximum">
+          <number>100</number>
+         </property>
+        </widget>
+       </item>
+       <item row="6" column="0" colspan="2">
+        <widget class="QTextEdit" name="textLog">
+         <property name="placeholderText">
+          <string>Résultats et messages du traitement…</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
