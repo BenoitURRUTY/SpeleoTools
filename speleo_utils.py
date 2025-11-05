@@ -795,7 +795,7 @@ def fill_sinks(dem_layer, minslope=0.1, filled_output=None):
     retourne : chemin/objet du raster rempli
     """
     if filled_output is None:
-        filled_output = 'TEMPORARY_OUTPUT'
+        filled_output = _temp_path('filled')
     params = {
         'ELEV': dem_layer,
         'FILLED': filled_output,

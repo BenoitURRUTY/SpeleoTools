@@ -21,6 +21,9 @@ from qgis.core import (
 )
 from PyQt5.QtCore import QVariant
 
+import numpy as np
+import heapq
+
 from .speleo_utils import *
 
 # Charger l'interface .ui
@@ -342,6 +345,7 @@ class SpeleoToolsDialog(QtWidgets.QDialog, FORM_CLASS):
         base = os.path.splitext(name)[0]
         safe = "".join([c if c.isalnum() or c in ('_', '-') else '_' for c in base])
         return safe
+    
 
 
 
@@ -502,7 +506,6 @@ class SpeleoToolsDialog(QtWidgets.QDialog, FORM_CLASS):
         dirpath = QtWidgets.QFileDialog.getExistingDirectory(self, "Choisir dossier de sortie", start)
         if dirpath:
             self.lineOutFolderDolines.setText(dirpath)
-
 
 
     def main_find_dolines(self):
