@@ -20,70 +20,9 @@
       <enum>QTabWidget::North</enum>
      </property>
      <property name="currentIndex">
-      <number>1</number>
+      <number>3</number>
      </property>
-     <widget class="QWidget" name="tabImport">
-      <!-- Contenu inchangé -->
-      <attribute name="title">
-       <string>Import &amp; Styles</string>
-      </attribute>
-      <layout class="QVBoxLayout" name="layoutImport">
-       <item>
-        <widget class="QLabel" name="lblImport">
-         <property name="text">
-          <string>Importer une couche spéléo (Therion, shapefile, etc.)</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="btnImport">
-         <property name="text">
-          <string>Importer un fichier...</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QLabel" name="lblStyle">
-         <property name="text">
-          <string>Appliquer un style prédéfini</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QComboBox" name="comboStyle">
-         <item>
-          <property name="text">
-           <string>Therion</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>Cheminement</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>Entrées</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>Habillage</string>
-          </property>
-         </item>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="btnApplyStyle">
-         <property name="text">
-          <string>Appliquer le style</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </widget>
      <widget class="QWidget" name="tabThickness">
-      <!-- Contenu inchangé -->
       <attribute name="title">
        <string>Épaisseur de roche</string>
       </attribute>
@@ -165,9 +104,427 @@
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="tabProspect">
+      <attribute name="title">
+       <string>Traitement MNT</string>
+      </attribute>
+      <layout class="QGridLayout" name="layoutProspect">
+       <item row="5" column="1">
+        <widget class="QDoubleSpinBox" name="spinZFactor">
+         <property name="minimum">
+          <double>0.010000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>1000.000000000000000</double>
+         </property>
+         <property name="singleStep">
+          <double>0.100000000000000</double>
+         </property>
+         <property name="value">
+          <double>1.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="0">
+        <widget class="QLabel" name="lblZFactor">
+         <property name="text">
+          <string>z-factor</string>
+         </property>
+        </widget>
+       </item>
+       <item row="7" column="0">
+        <widget class="QLabel" name="lblVATWindow">
+         <property name="text">
+          <string>Taille fenêtre VAT</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0" colspan="2">
+        <widget class="QCheckBox" name="chkHillshade">
+         <property name="text">
+          <string>Calculer ombrage (hillshade)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="11" column="0" colspan="2">
+        <widget class="QProgressBar" name="progressProspect">
+         <property name="minimum">
+          <number>0</number>
+         </property>
+         <property name="maximum">
+          <number>100</number>
+         </property>
+        </widget>
+       </item>
+       <item row="10" column="0">
+        <widget class="QPushButton" name="btnRunProspect">
+         <property name="text">
+          <string>Lancer l'analyse</string>
+         </property>
+        </widget>
+       </item>
+       <item row="7" column="1">
+        <widget class="QSpinBox" name="spinVATWindow">
+         <property name="minimum">
+          <number>3</number>
+         </property>
+         <property name="maximum">
+          <number>99</number>
+         </property>
+         <property name="singleStep">
+          <number>2</number>
+         </property>
+         <property name="value">
+          <number>5</number>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="1">
+        <widget class="QLineEdit" name="editAzimuths">
+         <property name="placeholderText">
+          <string>ex. 0,90,180,270</string>
+         </property>
+        </widget>
+       </item>
+       <item row="6" column="0" colspan="2">
+        <widget class="QCheckBox" name="chkVAT">
+         <property name="text">
+          <string>Calculer VAT (Visualization for Archaeological Topography)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="10" column="1">
+        <widget class="QPushButton" name="btnBrowseOutput">
+         <property name="text">
+          <string>Parcourir...</string>
+         </property>
+        </widget>
+       </item>
+       <item row="8" column="1">
+        <widget class="QLineEdit" name="editOutputDir">
+         <property name="placeholderText">
+          <string>Laisser vide → dossier temporaire</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
+        <widget class="QLabel" name="lblAzimuths">
+         <property name="text">
+          <string>Azimuts (séparés par des virgules)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QComboBox" name="comboProspectDEM"/>
+       </item>
+       <item row="8" column="0">
+        <widget class="QLabel" name="lblOutputDir">
+         <property name="text">
+          <string>Dossier de sortie</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0" colspan="2">
+        <widget class="QCheckBox" name="chkMultiHillshade">
+         <property name="text">
+          <string>Calculer hillshade multidirectionnel</string>
+         </property>
+        </widget>
+       </item>
+       <item row="12" column="0" colspan="2">
+        <widget class="QTextEdit" name="textLog">
+         <property name="readOnly">
+          <bool>false</bool>
+         </property>
+         <property name="placeholderText">
+          <string>Résultats et messages du traitement…</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0" colspan="2">
+        <widget class="QCheckBox" name="chkSlope">
+         <property name="text">
+          <string>Calculer pente</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="0">
+        <widget class="QLabel" name="lblProspectDEM">
+         <property name="text">
+          <string>Modèle Numérique de Terrain</string>
+         </property>
+        </widget>
+       </item>
+       <item row="9" column="0">
+        <widget class="QCheckBox" name="AddlayerMNT">
+         <property name="contextMenuPolicy">
+          <enum>Qt::DefaultContextMenu</enum>
+         </property>
+         <property name="autoFillBackground">
+          <bool>false</bool>
+         </property>
+         <property name="text">
+          <string>Ajouter les chouches au projet</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tabDolines">
+      <attribute name="title">
+       <string>Détection dolines</string>
+      </attribute>
+      <layout class="QGridLayout" name="layoutDolines">
+       <item row="0" column="0">
+        <widget class="QLabel" name="lblDolinesDEM">
+         <property name="text">
+          <string>Modèle Numérique de Terrain (DEM)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="1">
+        <widget class="QDoubleSpinBox" name="doubleAreaThreshold">
+         <property name="decimals">
+          <number>3</number>
+         </property>
+         <property name="minimum">
+          <double>0.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>1000000000.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>1.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="1">
+        <widget class="QSpinBox" name="spinDBSCMin">
+         <property name="minimum">
+          <number>1</number>
+         </property>
+         <property name="maximum">
+          <number>1000000</number>
+         </property>
+         <property name="value">
+          <number>5</number>
+         </property>
+        </widget>
+       </item>
+       <item row="9" column="0">
+        <widget class="QPushButton" name="btnRunDolines">
+         <property name="text">
+          <string>Lancer la détection</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="1">
+        <widget class="QDoubleSpinBox" name="doubleSinkThreshold">
+         <property name="decimals">
+          <number>3</number>
+         </property>
+         <property name="minimum">
+          <double>0.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10000.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>1.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="0">
+        <widget class="QLabel" name="lblDBSCMin">
+         <property name="text">
+          <string>DBSCAN min points</string>
+         </property>
+        </widget>
+       </item>
+       <item row="10" column="0" colspan="2">
+        <widget class="QProgressBar" name="progressDolines">
+         <property name="minimum">
+          <number>0</number>
+         </property>
+         <property name="maximum">
+          <number>100</number>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
+        <widget class="QLabel" name="lblAreaThreshold">
+         <property name="text">
+          <string>area_threshold</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="lblMinSlope">
+         <property name="text">
+          <string>minslope</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="1">
+        <widget class="QDoubleSpinBox" name="doubleDBSCEps">
+         <property name="decimals">
+          <number>3</number>
+         </property>
+         <property name="minimum">
+          <double>0.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10000.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>1.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="7" column="0">
+        <widget class="QLabel" name="lblDolinesOutput">
+         <property name="text">
+          <string>Dossier de sortie (optionnel)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QComboBox" name="comboDolinesDEM"/>
+       </item>
+       <item row="1" column="1">
+        <widget class="QDoubleSpinBox" name="doubleMinslope">
+         <property name="decimals">
+          <number>3</number>
+         </property>
+         <property name="minimum">
+          <double>0.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>1000.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>0.100000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="lblSinkThreshold">
+         <property name="text">
+          <string>sink_threshold</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="0">
+        <widget class="QLabel" name="lblDBSCEps">
+         <property name="text">
+          <string>DBSCAN eps</string>
+         </property>
+        </widget>
+       </item>
+       <item row="11" column="0" colspan="2">
+        <widget class="QTextEdit" name="textLogDolines">
+         <property name="minimumSize">
+          <size>
+           <width>400</width>
+           <height>120</height>
+          </size>
+         </property>
+         <property name="readOnly">
+          <bool>false</bool>
+         </property>
+         <property name="placeholderText">
+          <string>Logs et résultats (centroids, polygones, erreurs…)</string>
+         </property>
+        </widget>
+       </item>
+       <item row="7" column="1">
+        <layout class="QHBoxLayout" name="layoutDolinesOut">
+         <item>
+          <widget class="QLineEdit" name="lineOutFolderDolines"/>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnBrowseDolines">
+           <property name="text">
+            <string>Parcourir...</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item row="6" column="0">
+        <widget class="QLabel" name="Save_Temp">
+         <property name="text">
+          <string>Sauver les couches intermédiaires</string>
+         </property>
+        </widget>
+       </item>
+       <item row="6" column="1">
+        <widget class="QCheckBox" name="checkBox_savetemp">
+         <property name="text">
+          <string/>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tabImport">
+      <attribute name="title">
+       <string>Import &amp; Styles (En dev)</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="layoutImport">
+       <item>
+        <widget class="QLabel" name="label_2">
+         <property name="text">
+          <string>En cours de dév</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="lblStyle">
+         <property name="text">
+          <string>Appliquer un style prédéfini</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QComboBox" name="comboStyle">
+         <item>
+          <property name="text">
+           <string>Therion</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Cheminement</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Entrées</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Habillage</string>
+          </property>
+         </item>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnApplyStyle">
+         <property name="text">
+          <string>Appliquer le style</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
      <widget class="QWidget" name="tabProfile">
       <attribute name="title">
-       <string>Profils &amp; 3D</string>
+       <string>Profils 3D (En dev)</string>
       </attribute>
       <layout class="QGridLayout" name="layoutProfile">
        <item row="0" column="0">
@@ -199,6 +556,9 @@
        </item>
        <item row="2" column="1">
         <widget class="QDoubleSpinBox" name="doubleSpinBoxSpacing">
+         <property name="decimals">
+          <number>2</number>
+         </property>
          <property name="minimum">
           <double>0.100000000000000</double>
          </property>
@@ -207,9 +567,6 @@
          </property>
          <property name="value">
           <double>1.000000000000000</double>
-         </property>
-         <property name="decimals">
-          <number>2</number>
          </property>
         </widget>
        </item>
@@ -232,6 +589,12 @@
        </item>
        <item row="4" column="1">
         <widget class="QDoubleSpinBox" name="doubleSpinBoxMaxGap">
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
+         <property name="decimals">
+          <number>2</number>
+         </property>
          <property name="minimum">
           <double>0.100000000000000</double>
          </property>
@@ -240,12 +603,6 @@
          </property>
          <property name="value">
           <double>10.000000000000000</double>
-         </property>
-         <property name="decimals">
-          <number>2</number>
-         </property>
-         <property name="enabled">
-          <bool>false</bool>
          </property>
         </widget>
        </item>
@@ -275,69 +632,6 @@
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="tabProspect">
-      <!-- Contenu inchangé -->
-      <attribute name="title">
-       <string>Prospection (MNT)</string>
-      </attribute>
-      <layout class="QGridLayout" name="layoutProspect">
-       <item row="0" column="0">
-        <widget class="QLabel" name="lblProspectDEM">
-         <property name="text">
-          <string>Modèle Numérique de Terrain</string>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="1">
-        <widget class="QComboBox" name="comboProspectDEM"/>
-       </item>
-       <item row="1" column="0" colspan="2">
-        <widget class="QCheckBox" name="chkHillshade">
-         <property name="text">
-          <string>Calculer ombrage (hillshade)</string>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="0" colspan="2">
-        <widget class="QCheckBox" name="chkSlope">
-         <property name="text">
-          <string>Calculer pente</string>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="0" colspan="2">
-        <widget class="QCheckBox" name="chkLowPoints">
-         <property name="text">
-          <string>Identifier les points bas (prospection)</string>
-         </property>
-        </widget>
-       </item>
-       <item row="4" column="0" colspan="2">
-        <widget class="QPushButton" name="btnRunProspect">
-         <property name="text">
-          <string>Lancer l'analyse</string>
-         </property>
-        </widget>
-       </item>
-       <item row="5" column="0" colspan="2">
-        <widget class="QProgressBar" name="progressProspect">
-         <property name="minimum">
-          <number>0</number>
-         </property>
-         <property name="maximum">
-          <number>100</number>
-         </property>
-        </widget>
-       </item>
-       <item row="6" column="0" colspan="2">
-        <widget class="QTextEdit" name="textLog">
-         <property name="placeholderText">
-          <string>Résultats et messages du traitement…</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </widget>
     </widget>
    </item>
   </layout>
@@ -349,6 +643,16 @@
    <signal>toggled(bool)</signal>
    <receiver>doubleSpinBoxMaxGap</receiver>
    <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>20</x>
+     <y>20</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>20</x>
+     <y>20</y>
+    </hint>
+   </hints>
   </connection>
  </connections>
 </ui>

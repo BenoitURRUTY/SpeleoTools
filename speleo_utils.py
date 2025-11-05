@@ -1,10 +1,19 @@
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsFields, QgsField, QgsFeature,
-    QgsGeometry, QgsPointXY, QgsPoint, QgsDistanceArea, QgsMessageLog, Qgis,QgsWkbTypes,QgsVectorFileWriter,
+    QgsGeometry, QgsPointXY, QgsPoint, QgsDistanceArea, QgsMessageLog, Qgis,QgsWkbTypes,QgsVectorFileWriter,QgsApplication,QgsRasterLayer,
     QgsCoordinateTransform,
-    QgsCoordinateReferenceSystem
-)
+    QgsCoordinateReferenceSystem)
 from PyQt5.QtCore import QVariant
+from qgis.PyQt.QtCore import QMetaType
+
+import processing
+from processing.core.Processing import Processing
+import os
+import tempfile
+
+# ensure processing is initialized
+Processing.initialize()
+
 
 import math
 # ---------- UTILITAIRES ----------
@@ -200,48 +209,65 @@ def compute_thickness(dem_layer, cave_layer, out_path=None, layer_name="Thicknes
         )
 
 
+# ---------- 2) PROFIL (version améliorée) ----------
 
-# ---------- 2) PROFIL ----------
 def transform_point_to_dem_crs(point_xy, line_crs, dem_crs, proj):
-    """Transforme un point du CRS de la ligne vers le CRS du MNT."""
+    """Transforme un point du CRS de la ligne vers le CRS du MNT.
+    Retourne un QgsPointXY dans le CRS du DEM."""
     if line_crs != dem_crs:
         xform = QgsCoordinateTransform(line_crs, dem_crs, proj)
-        return xform.transform(point_xy)
-    return point_xy
+        pt = xform.transform(point_xy)
+        return QgsPointXY(pt.x(), pt.y())
+    return QgsPointXY(point_xy.x(), point_xy.y())
 
-def sample_dem_at_point(dem_layer, point_xy, line_crs, dem_crs, proj):
-    """Échantillonne le MNT au point donné (dans le CRS de la ligne)."""
-    pt_dem = transform_point_to_dem_crs(point_xy, line_crs, dem_crs, proj)
-    sample_point = QgsPointXY(pt_dem.x(), pt_dem.y())
+def sample_dem_at_point(dem_layer, point_xy):
+    """Échantillonne le MNT au point donné.
+    ATTENTION : point_xy doit être dans le CRS du DEM (QgsPointXY)."""
     dp = dem_layer.dataProvider()
+    # Convertir en point adapté
+    sample_point = QgsPointXY(point_xy.x(), point_xy.y())
+    # Essayer dataProvider.sample (si disponible)
     try:
         samp = dp.sample(sample_point, 1)
     except Exception:
-        try:
-            ident = dp.identify(sample_point, dp.IdentifyFormatValue)
-            if ident.isValid():
-                val = list(ident.results().values())[0]
+        samp = None
+
+    # si sample a renvoyé quelque chose d'utilisable
+    if samp is not None:
+        # dp.sample peut renvoyer tuple (val, ok) ou simplement la valeur
+        if isinstance(samp, (tuple, list)):
+            val = samp[0] if samp else None
+            ok = samp[1] if len(samp) > 1 else True
+            try:
+                return float(val) if ok and val is not None and not math.isnan(float(val)) else None
+            except Exception:
+                return None
+        else:
+            try:
+                return float(samp) if samp is not None and not math.isnan(float(samp)) else None
+            except Exception:
+                return None
+
+    # fallback : utiliser identify (plus lent mais parfois nécessaire)
+    try:
+        ident = dp.identify(sample_point, dp.IdentifyFormatValue)
+        if ident.isValid():
+            results = list(ident.results().values())
+            if results:
+                val = results[0]
                 try:
                     return float(val) if val is not None and not math.isnan(float(val)) else None
-                except:
+                except Exception:
                     return None
-        except Exception:
-            pass
-        return None
-    if isinstance(samp, (tuple, list)):
-        val, ok = samp[0], samp[1] if len(samp) > 1 else True
-        try:
-            return float(val) if ok and not math.isnan(float(val)) else None
-        except:
-            return None
-    else:
-        try:
-            return float(samp) if not math.isnan(float(samp)) else None
-        except:
-            return None
+    except Exception:
+        pass
+
+    return None
+
 
 def interpolate_z_values(z_list, sample_points, spacing, max_gap_distance):
-    """Interpole les valeurs Z manquantes entre deux points valides."""
+    """Interpole les valeurs Z manquantes entre deux points valides.
+    Renvoie une liste de segments; chaque segment est une liste de QgsPoint (avec Z)."""
     points_3d_segments = []
     i = 0
     n = len(z_list)
@@ -275,6 +301,7 @@ def interpolate_z_values(z_list, sample_points, spacing, max_gap_distance):
             i = j
     return points_3d_segments
 
+
 def calculate_hole_length(sample_points, prev_idx, next_idx, spacing):
     """Calcule la longueur d'un trou entre deux points."""
     if spacing and spacing > 0:
@@ -283,8 +310,9 @@ def calculate_hole_length(sample_points, prev_idx, next_idx, spacing):
         return sum(math.hypot(p2.x() - p1.x(), p2.y() - p1.y())
                    for p1, p2 in zip(sample_points[prev_idx:next_idx], sample_points[prev_idx+1:next_idx]))
 
+
 def create_interpolated_points(z_list, sample_points, prev_idx, next_idx):
-    """Crée des points interpolés entre deux indices."""
+    """Crée des points interpolés entre deux indices (exclut les extrémités)."""
     z0 = z_list[prev_idx]
     z1 = z_list[next_idx]
     steps = next_idx - prev_idx
@@ -293,10 +321,12 @@ def create_interpolated_points(z_list, sample_points, prev_idx, next_idx):
                      z0 + (step / float(steps)) * (z1 - z0))
             for step in range(1, steps)]
 
+
 def is_continuous(segment, point):
-    """Vérifie si un segment se termine au point donné."""
+    """Vérifie si un segment se termine au point donné (tolérance pour floats)."""
     return (math.isclose(segment[-1].x(), point.x(), abs_tol=1e-6) and
             math.isclose(segment[-1].y(), point.y(), abs_tol=1e-6))
+
 
 def create_profile_from_line(dem_layer, line_layer, spacing=None, output_path=None, interp=True, max_gap_distance=None, add_to_project=True):
     """Crée un profil 3D (LineStringZ) à partir d'une polyligne 2D/3D."""
@@ -304,21 +334,26 @@ def create_profile_from_line(dem_layer, line_layer, spacing=None, output_path=No
     dem_crs = dem_layer.crs()
     line_crs = line_layer.crs()
     need_transform = (dem_crs != line_crs)
+
     # on met la couche de sortie dans le CRS du DEM pour garder cohérence Z+XY
     crs_authid = dem_crs.authid()
     geom_type = f"LineStringZ?crs={crs_authid}"
     out_layer = QgsVectorLayer(geom_type, "profiles", "memory")
     pr = out_layer.dataProvider()
     fields = QgsFields()
-    fields.append(QgsField("orig_id", QVariant.Int))
-    fields.append(QgsField("length_m", QVariant.Double))
+    fields.append(QgsField("orig_id", QMetaType.Type.Int))
+    fields.append(QgsField("length_m", QMetaType.Type.Double))
+
+    # fields.append(QgsField("orig_id", QVariant.Int))
+    # fields.append(QgsField("length_m", QVariant.Double))
     pr.addAttributes(fields)
     out_layer.updateFields()
-    
     # distance calculator (utile si spacing non fourni)
     d_area = QgsDistanceArea()
-    d_area.setSourceCrs(dem_crs, proj.transformContext() if hasattr(proj, "transformContext") else proj)
-    
+    if hasattr(proj, "transformContext"):
+        d_area.setSourceCrs(dem_crs, proj.transformContext())
+    else:
+        d_area.setSourceCrs(dem_crs)
     # itérer features
     for feat in line_layer.getFeatures():
         geom = feat.geometry()
@@ -337,42 +372,29 @@ def create_profile_from_line(dem_layer, line_layer, spacing=None, output_path=No
 
         # gérer multipart ou singlepart
         if geom_dem.isMultipart():
-            parts = geom_dem.asMultiPolyline()
+            raw_parts = geom_dem.asMultiPolyline()
         else:
-            parts = [geom_dem.asPolyline()]
+            raw_parts = [geom_dem.asPolyline()]
 
         # pour chaque partie
-        for part in parts:
-            if not part:
+        for raw_part in raw_parts:
+            if not raw_part:
                 continue
 
-            # --- IMPORTANT FIX ---
-            # part peut contenir des QgsPoint ou des QgsPointXY suivant la source.
-            # Pour l'interpolation on utilise fromPolylineXY si ce sont des QgsPointXY,
-            # sinon fromPolyline. Cela évite l'erreur "index 0 has type 'QgsPointXY' but 'QgsPoint' is expected".
-            first_pt = part[0]
-            try:
-                is_qgspointxy = isinstance(first_pt, QgsPointXY)
-            except Exception:
-                # fallback : considérer comme QgsPoint si doute
-                is_qgspointxy = False
+            # Normaliser tous les points en QgsPointXY (dans le CRS du DEM maintenant)
+            part_xy = [QgsPointXY(p.x(), p.y()) for p in raw_part]
 
-            if is_qgspointxy:
-                line_geom = QgsGeometry.fromPolylineXY(part)
-            else:
-                # si ce sont des QgsPoint (ou QgsPointZ), convertir en liste de QgsPoint 2D
-                # asPolyline renvoie souvent QgsPoint, on peut l'utiliser directement
-                line_geom = QgsGeometry.fromPolyline([QgsPoint(p.x(), p.y()) for p in part])
+            # construire une geometry 2D pour interpolation (fromPolylineXY)
+            line_geom = QgsGeometry.fromPolylineXY(part_xy)
 
             # longueur de la partie
             length = line_geom.length()
+
             # déterminer points d'échantillonnage (liste de QgsPointXY)
             sample_points = []
             if spacing is None or spacing <= 0:
-                # utiliser les sommets (part est une liste de QgsPoint/QgsPointXY)
-                for p in part:
-                    # normaliser en QgsPointXY pour le sampling
-                    sample_points.append(QgsPointXY(p.x(), p.y()))
+                # utiliser les sommets
+                sample_points = part_xy[:]
             else:
                 # échantillonnage régulier le long de la ligne (0..length)
                 dist = 0.0
@@ -386,59 +408,52 @@ def create_profile_from_line(dem_layer, line_layer, spacing=None, output_path=No
                 # s'assurer d'avoir le dernier point exact
                 end_p = line_geom.interpolate(length).asPoint()
                 lastxy = QgsPointXY(end_p.x(), end_p.y())
-                if not sample_points or (not math.isclose(sample_points[-1].x(), lastxy.x(), abs_tol=1e-6) or
-                                         not math.isclose(sample_points[-1].y(), lastxy.y(), abs_tol=1e-6)):
+                if (not sample_points) or (not math.isclose(sample_points[-1].x(), lastxy.x(), abs_tol=1e-6) or
+                                           not math.isclose(sample_points[-1].y(), lastxy.y(), abs_tol=1e-6)):
                     sample_points.append(lastxy)
 
             if not sample_points:
                 continue
 
-            # échantillonner DEM pour chaque sample point
+            # échantillonner DEM pour chaque sample point (point déjà en CRS DEM)
             z_list = []
-            # NOTE: sample_dem_at_point doit exister dans ton module (ne l'ai pas redéfini ici).
             for pxy in sample_points:
-                # sample_dem_at_point(dem_layer, point_xy, src_crs, dem_crs, project)
-                z = sample_dem_at_point(dem_layer, pxy, dem_crs, dem_crs, proj)
+                z = sample_dem_at_point(dem_layer, pxy)
                 z_list.append(z)
 
-            # interpolation / découpage en segments 3D
-            if interp:
-                # interpolate_z_values doit renvoyer une liste de segments où chaque seg est une liste de QgsPoint (avec Z)
-                points_3d_segments = interpolate_z_values(z_list, sample_points, spacing, max_gap_distance)
-            else:
-                # sans interpolation, on transforme directement les points valides en segments contigus
-                points_3d_segments = []
-                cur_seg = []
-                for idx, z in enumerate(z_list):
-                    if z is None:
-                        if len(cur_seg) >= 2:
-                            points_3d_segments.append(cur_seg)
-                        cur_seg = []
-                    else:
-                        # Ici on crée un QgsPoint (avec Z) — correct pour fromPolyline (LineStringZ)
-                        cur_seg.append(QgsPoint(sample_points[idx].x(), sample_points[idx].y(), z))
-                if len(cur_seg) >= 2:
-                    points_3d_segments.append(cur_seg)
+            points_3d_segments = []
+            cur_seg = []
+            for idx, z in enumerate(z_list):
+                if z is None:
+                    if len(cur_seg) >= 2:
+                        points_3d_segments.append(cur_seg)
+                    cur_seg = []
+                else:
+                    cur_seg.append(QgsPoint(sample_points[idx].x(), sample_points[idx].y(), z))
+            if len(cur_seg) >= 2:
+                points_3d_segments.append(cur_seg)
 
             # créer features de sortie pour chaque segment
+            feats_to_add = []
             for seg in points_3d_segments:
                 if len(seg) < 2:
                     continue
                 feat_out = QgsFeature(out_layer.fields())
-                # seg est une liste de QgsPoint (avec Z), on peut créer une geom 3D
+                # seg est une liste de QgsPoint (avec Z) -> fromPolyline crée LineStringZ si points ont Z
                 feat_geom = QgsGeometry.fromPolyline(seg)
                 feat_out.setGeometry(feat_geom)
-                feat_out.setAttribute("orig_id", feat.id())
-                # longueur en unités du CRS du DEM (souvent mètres si CRS métrique)
-                feat_out.setAttribute("length_m", feat_geom.length())
-                pr.addFeatures([feat_out])
+                feat_out.setAttribute("orig_id", int(feat.id()))
+                feat_out.setAttribute("length_m", float(feat_geom.length()))
+                feats_to_add.append(feat_out)
+
+            if feats_to_add:
+                pr.addFeatures(feats_to_add)
 
     out_layer.updateExtents()
 
     # sauvegarder si demandé (ex: shapefile)
     if output_path:
         error = QgsVectorFileWriter.writeAsVectorFormat(out_layer, output_path, "UTF-8", out_layer.crs(), "ESRI Shapefile")
-        # si succès, remplacer out_layer par couche sur disque
         if error == QgsVectorFileWriter.NoError:
             disk_layer = QgsVectorLayer(output_path, "profiles_saved", "ogr")
             if disk_layer.isValid():
@@ -449,92 +464,500 @@ def create_profile_from_line(dem_layer, line_layer, spacing=None, output_path=No
 
     return out_layer
 
-# ---------- 3) PROSPECTION (hillshade / slope / bas-fonds) ----------
-def run_prospection_real(dem_layer, do_hillshade=True, do_slope=True, do_low=True, out_folder=None):
+# ---------- 3) Traitement MNT ----------
+"""
+Module contenant fonctions de traitement des MNT pour le plugin QGIS.
+Fonctions exposées :
+- hillshade(dem_layer, out_path=None, params..., context=None, feedback=None)
+- multidirectional_hillshade(dem_layer, out_path=None, azimuths=None, context=None, feedback=None)
+- slope(dem_layer, out_path=None, params..., context=None, feedback=None)
+- vat(dem_layer, out_path=None, window_size=5, context=None, feedback=None)
+
+Chaque fonction tente de choisir automatiquement un algorithme de processing disponible
+(GDAL / SAGA / GRASS) et renvoie le chemin du raster de sortie (ou None en cas d'erreur).
+"""
+
+
+
+def _available_algorithms():
+    """Renvoie l'ensemble des ids d'algorithmes disponibles."""
+    return {alg.id() for alg in QgsApplication.processingRegistry().algorithms()}
+
+
+def _choose_alg(possible_ids):
+    """Choisit le premier algorithme disponible dans possible_ids."""
+    avail = _available_algorithms()
+    for pid in possible_ids:
+        if pid in avail:
+            return pid
+    return None
+
+
+def _layer_input(layer):
+    """Accepte soit un QgsRasterLayer soit un nom (str) et renvoie l'identifiant attendu par processing."""
+    from qgis.core import QgsRasterLayer
+    if isinstance(layer, str):
+        return layer
+    elif isinstance(layer, QgsRasterLayer):
+        return layer.dataProvider().dataSourceUri()
+    else:
+        return layer
+    
+class SafeFeedback:
+    """Wrapper pour feedback afin d'éviter les erreurs si feedback=None"""
+    def __init__(self, fb=None):
+        self.fb = fb
+
+    def pushInfo(self, msg):
+        if self.fb:
+            self.fb.pushInfo(str(msg))
+        else:
+            print("[INFO]", msg)
+
+    def reportError(self, msg):
+        if self.fb and hasattr(self.fb, "reportError"):
+            self.fb.reportError(str(msg))
+        else:
+            print("[ERROR]", msg)
+
+def hillshade(dem_layer, out_path=None, zfactor=1.0, azimuth=315.0, altitude=45.0, context=None, feedback=None, addProject=True):
     """
-    Exécute hillshade (GDAL), slope (GDAL) et détection simple de zones basses
-    (seuil = mean - k * stddev). Sauvegarde les rasters dans out_folder si fourni.
-    Retourne un dict avec les layers créés.
+    Calcule un hillshade simple à partir d’un MNT.
+    Retourne le chemin du fichier de sortie ou None.
     """
-    results = {}
-    dem_path = dem_layer.source()
+    fb = SafeFeedback(feedback)  # safe feedback
 
-    # hillshade via GDAL
-    if do_hillshade:
-        out_hill = (out_folder + "/hillshade.tif") if out_folder else "memory:hillshade"
+    if not dem_layer or not dem_layer.isValid():
+        fb.reportError("Le MNT spécifié est invalide.")
+        return None
+
+    dem_in = dem_layer.source()
+    dem_crs = dem_layer.crs()
+    fb.pushInfo(f"CRS détecté : {dem_crs.authid()}")
+
+    # Choix de l’algorithme disponible
+    candidates = ['gdal:hillshade', 'grass7:r.hillshade', 'saga:hillshade']
+    alg = _choose_alg(candidates)
+    if alg is None:
+        fb.pushInfo("Aucun algorithme de hillshade disponible.")
+        return None
+
+    # Fichier de sortie
+    if out_path is None:
+        out_path = os.path.join(tempfile.gettempdir(), f"hillshade_{os.path.basename(str(dem_in))}.tif")
+
+    # Construction des paramètres selon l'algorithme
+    params = {}
+    if alg == 'gdal:hillshade':
         params = {
-            'INPUT': dem_path,
-            'Z_FACTOR': 1.0,
-            'AZIMUTH': 315.0,
-            'ZENITH': 45.0,
-            'OUTPUT': out_hill
-        }
-        res = processing.run("gdal:hillshade", params)
-        results['hillshade'] = res['OUTPUT']
-        self.log("Hillshade généré.")
-
-    # slope via GDAL
-    if do_slope:
-        out_slope = (out_folder + "/slope.tif") if out_folder else "memory:slope"
-        params = {
-            'INPUT': dem_path,
-            'Z_FACTOR': 1.0,
-            'SCALE': 1.0,
-            'OUTPUT': out_slope
-        }
-        res = processing.run("gdal:slope", params)
-        results['slope'] = res['OUTPUT']
-        self.log("Pente générée.")
-
-    # détection zones basses : statistique simple + calcul mask
-    if do_low:
-        stats = dem_layer.dataProvider().bandStatistics(1)
-        mean = stats.mean
-        stddev = stats.stdDev
-        # seuil : moyenne - 0.5 * stddev (paramétrable)
-        k = 0.5
-        threshold = mean - k * stddev
-        self.log(f"Stats DEM: mean={mean:.2f}, stddev={stddev:.2f}, seuil bas={threshold:.2f}")
-
-        # création masque : pixels < threshold -> 1 else 0 via raster calculator (GDAL calc)
-        out_mask = (out_folder + "/low_mask.tif") if out_folder else "memory:low_mask"
-        # formule GDAL: "A < threshold"
-        calc_params = {
-            'INPUT_A': dem_path,
-            'BAND_A': 1,
-            'EXPRESSION': f"A < {threshold}",
-            'OUTPUT': out_mask
-        }
-        # utilise GDAL raster calculator
-        res = processing.run("gdal:rastercalculator", calc_params)
-        results['low_mask'] = res['OUTPUT']
-        self.log("Masque zones basses généré.")
-
-        # polygoniser le masque si on veut vecteur
-        out_poly = (out_folder + "/low_areas.gpkg") if out_folder else "memory:low_areas"
-        poly_params = {
-            'INPUT': res['OUTPUT'],
+            'INPUT': dem_in,
             'BAND': 1,
-            'FIELD': 'VALUE',
-            'EIGHT_CONNECTEDNESS': False,
-            'EXTRA': '',
-            'OUTPUT': out_poly
+            'Z_FACTOR': float(zfactor),
+            'AZIMUTH': float(azimuth),
+            'ALTITUDE': float(altitude),
+            'COMPUTE_EDGES': True,
+            'OUTPUT': out_path,
         }
-        pres = processing.run("gdal:polygonize", poly_params)
-        results['low_areas'] = pres['OUTPUT']
-        self.log("Zones basses polygonisées.")
+    elif alg == 'grass7:r.hillshade':
+        params = {
+            'elevation': dem_in,
+            'scale': float(zfactor),
+            'azimuth': float(azimuth),
+            'altitude': float(altitude),
+            'output': out_path,
+        }
+    else:  # saga
+        params = {
+            'ELEVATION': dem_in,
+            'AZIMUTH': float(azimuth),
+            'ALTITUDE': float(altitude),
+            'METHOD': 0,
+            'RESULT': out_path,
+        }
 
-    # ajouter au projet si sorties sont fichiers ou memory
-    for k, pth in results.items():
+    try:
+        # Exécution du traitement
+        res = processing.run(alg, params, context=context, feedback=feedback)
+
+        # Récupère le raster produit
+        output_file = None
+        for v in res.values():
+            if isinstance(v, str) and os.path.exists(v):
+                output_file = v
+                break
+        if not output_file and os.path.exists(out_path):
+            output_file = out_path
+         
+        # Ajoute au projet et applique le CRS
+        if output_file:
+            rlayer = QgsRasterLayer(output_file, os.path.basename(output_file), "gdal")
+            if rlayer.isValid():
+                rlayer.setCrs(dem_crs)  # applique le CRS du DEM
+                # IMPORTANT : pour que le CRS soit reconnu, on doit réenregistrer le raster ou le notifier au projet
+                QgsProject.instance().addMapLayer(rlayer, False)  # ajoute sans sélectionner
+                if addProject:
+                
+                    # ajoute dans un groupe si souhaité
+                    group = QgsProject.instance().layerTreeRoot().findGroup("Traitement MNT")
+                    if not group:
+                        group = QgsProject.instance().layerTreeRoot().addGroup("Traitement MNT")
+                    group.addLayer(rlayer)
+
+        return output_file
+
+    except Exception as e:
+        fb.reportError(f"Hillshade error: {e}")
+        return None
+
+
+# --- Multidirectional Hillshade ---
+def multidirectional_hillshade(dem_layer, out_path=None, context=None, feedback=None):
+    fb = SafeFeedback(feedback)
+
+    if not dem_layer or not dem_layer.isValid():
+        fb.reportError("Le MNT spécifié est invalide.")
+        return None
+
+    dem_in = _layer_input(dem_layer)
+    dem_crs = dem_layer.crs()
+    fb.pushInfo(f"CRS détecté : {dem_crs.authid()}")
+    # tentative alg unique RVT
+    alg = _choose_alg(["rvt:rvt_multi_hillshade"])
+    if alg:
+        if out_path is None:
+            out_path = os.path.join(
+                tempfile.gettempdir(),
+                f'multidh_{os.path.basename(str(dem_in))}.tif'
+            )
+
         try:
-            lyr = QgsProject.instance().mapLayersByName(os.path.basename(pth))[0] if isinstance(pth, str) and QgsProject.instance().mapLayersByName(os.path.basename(pth)) else None
-        except Exception:
-            lyr = None
-        # si path is in-memory type returned by processing, on le récupère différemment
+            # Exécution de l'algorithme avec les paramètres
+            res = processing.run(
+                alg,
+                {
+                    'INPUT': dem_in,
+                    'VE_FACTOR': 1,
+                    'NUM_DIRECTIONS': 16,
+                    'SUN_ELEVATION': 35,
+                    'SAVE_AS_8BIT': False,
+                    'OUTPUT': out_path
+                }
+            )
+
+            # Recherche du chemin de sortie valide
+            output_file = None
+            for v in res.values():
+                if isinstance(v, str) and os.path.exists(v):
+                    output_file = v
+                    break
+
+            if not output_file and os.path.exists(out_path):
+                output_file = out_path
+            return output_file
+
+        except Exception as e:
+            fb.reportError(f'MD Hillshade error (saga): {e}')
+            # fallback manuel
+
+# --- Slope ---
+def slope(dem_layer, out_path=None, zfactor=1.0, context=None, feedback=None):
+    fb = SafeFeedback(feedback)
+    if not dem_layer or not dem_layer.isValid():
+        fb.reportError("Le MNT spécifié est invalide.")
+        return None
+
+    dem_in = dem_layer.source()
+    dem_crs = dem_layer.crs()
+    fb.pushInfo(f"CRS détecté : {dem_crs.authid()}")
+
+    alg = _choose_alg(['gdal:slope', 'grass7:r.slope.aspect', 'saga:slopeaspectcurvature'])
+    if alg is None:
+        fb.pushInfo('Aucun algorithme de pente disponible.')
+        return None
+
+    if out_path is None:
+        out_path = os.path.join(tempfile.gettempdir(), f'slope_{os.path.basename(str(dem_in))}.tif')
+
+    if alg == 'gdal:slope':
+        params = {'INPUT': dem_in, 'BAND':1, 'SCALE': float(zfactor), 'AS_PERCENT': False, 'COMPUTE_EDGES': True, 'Z_FACTOR':1.0, 'OUTPUT': out_path}
+    elif alg == 'grass7:r.slope.aspect':
+        params = {'elevation': dem_in, 'slope': out_path, 'format': 0, 'zfactor': float(zfactor)}
+    else:
+        params = {'ELEVATION': dem_in, 'SCALE': float(zfactor), 'RESULT': out_path}
+
+    try:
+        res = processing.run(alg, params, context=context, feedback=feedback)
+        for v in res.values():
+            if isinstance(v, str) and os.path.exists(v):
+                output_file = v
+                rlayer = QgsRasterLayer(output_file, os.path.basename(output_file), "gdal")
+                if rlayer.isValid():
+                    rlayer.setCrs(dem_crs)  # applique le CRS du DEM
+                    # IMPORTANT : pour que le CRS soit reconnu, on doit réenregistrer le raster ou le notifier au projet
+                    QgsProject.instance().addMapLayer(rlayer, False)  # ajoute sans sélectionner
+                    # ajoute dans un groupe si souhaité
+                    group = QgsProject.instance().layerTreeRoot().findGroup("Traitement MNT")
+                    if not group:
+                        group = QgsProject.instance().layerTreeRoot().addGroup("Traitement MNT")
+                    group.addLayer(rlayer)
+                return output_file
+        return None
+    except Exception as e:
+        fb.reportError(f"Slope error: {e}")
+        return None
+
+# --- VAT ---
+def VAT(dem_layer, out_path=None, context=None, type_terrain=0, feedback=None):
+    fb = SafeFeedback(feedback)
+
+    if not dem_layer or not dem_layer.isValid():
+        fb.reportError("Le MNT spécifié est invalide.")
+        return None
+    dem_in = _layer_input(dem_layer)
+    dem_crs = dem_layer.crs()
+    fb.pushInfo(f"CRS détecté : {dem_crs.authid()}")
+    # tentative alg unique RVT
+    alg = _choose_alg(["rvt:rvt_blender"])
+    if alg:
+        if out_path is None:
+            out_path = os.path.join(
+                tempfile.gettempdir(),
+                f'VAT_{os.path.basename(str(dem_in))}.tif'
+            )
+
         try:
-            if isinstance(pth, QgsRasterLayer) or isinstance(pth, QgsVectorLayer):
-                QgsProject.instance().addMapLayer(pth)
+            # Exécution de l'algorithme avec les paramètres
+            res = processing.run(
+                alg,
+                {
+                    'INPUT': dem_in,
+                    'BLEND_COMBINATION':0,
+                    'TERRAIN_TYPE':type_terrain,
+                    'SAVE_AS_8BIT':False,
+                    'OUTPUT': out_path
+                }
+            )
+
+            # Recherche du chemin de sortie valide
+            output_file = None
+            for v in res.values():
+                if isinstance(v, str) and os.path.exists(v):
+                    output_file = v
+                    break
+
+            if not output_file and os.path.exists(out_path):
+                output_file = out_path
+            return output_file
+
+        except Exception as e:
+            fb.reportError(f'VAT error (saga): {e}')
+            # fallback manuel
+
+
+
+
+# ---------- 4) PROSPECTION Auto ----------
+
+"""
+Collection de fonctions pour détecter des dolines (sinkholes) dans QGIS.
+Usage:
+- import find_dolines
+- find_dolines.main_find_dolines(dem_layer, out_folder=None, params={})
+
+Ce fichier contient des fonctions indépendantes pour chaque étape :
+ 1) comblement des sinks (SAGA XXL Wang & Liu)
+ 2) calcul du raster `sink = filled_dem - dem`
+ 3) vectorisation des zones de sink > seuil
+ 4) suppression des petites entités (option)
+ 5) clustering DBSCAN sur les centroïdes (optionnel)
+ 6) géométrie d'emprise minimale + suppression de la plus grande
+ 7) statistiques zonales (z_min, z_max, z_mean, z_median)
+ 8) centroids (barycentres) avec attributs
+
+Remarques:
+- Les sorties intermédiaires sont créées en mémoire (TEMPORARY_OUTPUT) sauf si out_folder est fourni.
+- Le code utilise processing.run ; il doit être exécuté dans l'environnement QGIS (console Python ou plugin).
+"""
+
+from qgis.core import QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry
+import processing
+import uuid
+
+
+def _temp_path(name_prefix):
+    return 'memory:' + name_prefix + '_' + str(uuid.uuid4())
+
+
+def fill_sinks(dem_layer, minslope=0.1, filled_output=None):
+    """Etape 1 : remplit les sinks avec SAGA (sagang:fillsinksxxlwangliu)
+    dem_layer : QgsRasterLayer ou chemin
+    minslope : float
+    retourne : chemin/objet du raster rempli
+    """
+    if filled_output is None:
+        filled_output = 'TEMPORARY_OUTPUT'
+    params = {
+        'ELEV': dem_layer,
+        'FILLED': filled_output,
+        'MINSLOPE': minslope,
+    }
+    res = processing.run('sagang:fillsinksxxlwangliu', params)
+    return res['FILLED']
+
+
+def compute_sink_raster(dem_layer, filled_dem, threshold=1.0, sink_output=None):
+    """Etape 2 : sink = filled_dem - dem_layer (GDAL Raster calculator)
+    Retourne un raster (path or memory id)
+    """
+    if sink_output is None:
+        sink_output = 'TEMPORARY_OUTPUT'
+
+    # gdal:rastercalculator requiert des noms de couche A,B,... on utilisera A-B
+
+    # Valeur temporaire pour NoData
+    sentinel = -9999.0
+
+    # Étape 1 : calculer (A - B), mais remplacer les valeurs <= threshold par sentinel
+    expr = f"(A - B) - ((A - B) <= {threshold}) * ((A - B) - {float(sentinel)})"
+
+    res = processing.run(
+        "gdal:rastercalculator",
+        {
+            'INPUT_A': filled_dem,
+            'BAND_A': 1,
+            'INPUT_B': dem_layer,
+            'BAND_B': 1,
+            'FORMULA': expr,
+            'NO_DATA': None,
+            'RTYPE': 5,  # Float32
+            'NO_DATA': sentinel,
+            'OPTIONS': '',
+            'OUTPUT': sink_output
+            }
+        )
+
+
+    return res.get('OUTPUT') or res.get('RESULT')
+
+
+def vectorize_sinks(sink_raster, vector_output=None):
+    """Etape 3 : polygonize les pixels 
+    Retourne une couche vectorielle (polygons)
+    """
+    if vector_output is None:
+        vector_output = 'TEMPORARY_OUTPUT'
+    # polygonize
+    poly_params = {
+        'INPUT_RASTER': sink_raster,
+        'RASTER_BAND': 1,
+        'FIELD_NAME': 'VALUE',
+        'OUTPUT': vector_output
+    }
+    res = processing.run('native:pixelstopoints', poly_params)
+
+    out_path = res.get('OUTPUT')
+    print(f"[DEBUG] Résultat pixelstopoints : {out_path}")
+
+
+    return res['OUTPUT']
+
+
+def dbscan_partition(point_layer, eps=1.0, min_size=5, field_name='CLUSTER_ID', vector_output=None):
+    """Etape 5 : partitionnement DBSCAN sur une couche de points
+    retourne la couche annotée avec field_name (et size field)
+    """
+    if vector_output is None:
+        vector_output = 'TEMPORARY_OUTPUT'
+    params = {
+        'INPUT': point_layer,
+        'EPS': eps,
+        'MIN_SIZE': min_size,
+        'FIELD_NAME': field_name,
+        'SIZE_FIELD_NAME': 'CLUSTER_SIZE',
+        'OUTPUT': vector_output
+    }
+    res = processing.run('native:dbscanclustering', params)
+    return res['OUTPUT']
+
+
+def minimum_bounding_geometry(polygons_layer, field='CLUSTER_ID', keep_largest=False, vector_output=None):
+    """Etape 6 : calcule l'emprise minimale pour chaque cluster et retire la plus grande (si demandé)
+    Retourne la couche de polygones filtrée
+    """
+    if vector_output is None:
+        vector_output = 'TEMPORARY_OUTPUT'
+    res = processing.run('qgis:minimumboundinggeometry', {'INPUT': polygons_layer, 'FIELD': field, 'TYPE': 3, 'OUTPUT': vector_output})
+    mbg = res['OUTPUT']
+
+    if not keep_largest:
+        # supprimer la plus grande emprise
+        # charger et parcourir pour trouver la plus grande
+        vl = mbg
+        if isinstance(mbg, str):
+            vl = QgsVectorLayer(mbg, 'mbg', 'ogr')
+        max_area = 0
+        max_id = None
+        for feat in vl.getFeatures():
+            a = feat.geometry().area()
+            if a > max_area:
+                max_area = a
+                max_id = feat.id()
+        if max_id is not None:
+            try:
+                vl.dataProvider().deleteFeatures([max_id])
+            except Exception:
+                # fallback to extract by expression
+                expr = f"$id != {max_id}"
+                res2 = processing.run('native:extractbyexpression', {'INPUT': vl, 'EXPRESSION': expr, 'OUTPUT': vector_output})
+                vl = res2['OUTPUT']
+        return vl
+    return mbg
+
+
+def zonal_statistics(polygons_layer, dem_layer, stats_prefix='dz_', stats=[2,3,5,6], vector_output=None):
+    """Etape 7 : calcule des statistiques zonales (z_min, z_max, z_mean, z_median)
+    Ajoute les champs sur la couche polygons_layer et retourne la couche.
+    """
+    if vector_output is None:
+        vector_output = 'TEMPORARY_OUTPUT'
+    params = {
+        'INPUT': polygons_layer,
+        'INPUT_RASTER': dem_layer,
+        'COLUMN_PREFIX': stats_prefix,
+        'STATISTICS':stats,
+        'OUTPUT': vector_output
+    }
+
+    res = processing.run('native:zonalstatisticsfb', params)
+
+    return res.get('OUTPUT', polygons_layer)
+
+
+def extract_centroids_with_stats(polygons_layer, vector_output=None):
+    """Etape 8 : créé la couche de centroïdes et copie les champs statistiques
+    Retourne la couche point (centroides) avec les attributs présents dans polygons_layer
+    """
+    if vector_output is None:
+        vector_output = 'TEMPORARY_OUTPUT'
+    cents = processing.run('native:centroids', {'INPUT': polygons_layer, 'ALL_PARTS': False, 'OUTPUT': vector_output})
+    return cents['OUTPUT']
+
+
+def cleanup_layers(layers_list):
+    """Supprime les couches temporaires de la légende (si elles ont été ajoutées)
+    layers_list: liste d'objets ou ids
+    """
+    proj = QgsProject.instance()
+    for l in layers_list:
+        try:
+            if isinstance(l, str):
+                # attempt to find layer by id or path
+                layer = proj.mapLayersByName(l)
+                if layer:
+                    proj.removeMapLayer(layer[0])
+            else:
+                proj.removeMapLayer(l.id())
         except Exception:
             pass
 
-    return results
+
