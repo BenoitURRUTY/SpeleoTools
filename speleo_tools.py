@@ -36,13 +36,13 @@ class SpeleoToolsDialog(QtWidgets.QDialog, FORM_CLASS):
 
         # Connexions signaux → slots
         # Onglet 1
-        self.btnImport.clicked.connect(self.import_data)
-        self.btnApplyStyle.clicked.connect(self.apply_style)
+        # self.btnImport.clicked.connect(self.import_data)
+        # self.btnApplyStyle.clicked.connect(self.apply_style)
         # Onglet 2
         self.btnBrowse.clicked.connect(self.browse_output)
         self.btnRunThickness.clicked.connect(self.run_thickness)
         # Onglet 3
-        self.btnGenerateProfile.clicked.connect(self.generate_profile_with_interpolation_and_export)
+        # self.btnGenerateProfile.clicked.connect(self.generate_profile_with_interpolation_and_export)
         # Onglet 4
         self.btnRunProspect.clicked.connect(self.run_mnt_analysis)
         self.btnBrowseOutput.clicked.connect(self.selectOutputDir) 
