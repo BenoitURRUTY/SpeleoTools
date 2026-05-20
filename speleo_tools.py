@@ -1077,7 +1077,7 @@ class SpeleoToolsDialog(QtWidgets.QDialog, FORM_CLASS):
         # Outline — fond, tout en bas
         _load(gpkg_map.get('outline2d', outputs_path + 'outline2d.gpkg'),
               "Outline 2D", grp2d, styles.get('outline2d'))
-
+        self.progressTherion.setValue(100)
         # Aires — au-dessus de l'outline
         if areas_gpkg:
             _load(areas_gpkg, "Aires 2D", grp2d, styles['areas2d'])
