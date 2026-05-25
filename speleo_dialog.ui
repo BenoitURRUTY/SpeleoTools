@@ -403,99 +403,406 @@
       </layout>
      </widget>
      <widget class="QWidget" name="tabProfile">
-      <attribute name="title"><string>📈 Profils 3D</string></attribute>
+      <attribute name="title"><string>📈 Profils</string></attribute>
       <layout class="QVBoxLayout" name="vProfile">
-       <property name="spacing"><number>6</number></property>
 
        <item>
         <widget class="QLabel" name="lblProfileInfo">
-         <property name="text"><string>&lt;b&gt;Profil développé&lt;/b&gt; — Génère un profil altimétrique le long d'une ligne (cheminement topographique) en échantillonnant le MNT. Exporte en CSV (et PNG si matplotlib est installé).</string></property>
+         <property name="text"><string>&lt;b&gt;Génération de profils altimétriques&lt;/b&gt; — Deux modes : profil projeté (coupe verticale selon un angle donné) ou profil développé (le long d'une polyligne). Dans les deux cas, X = distance le long du profil, Y = altitude.</string></property>
          <property name="wordWrap"><bool>true</bool></property>
          <property name="styleSheet"><string>QLabel { background:#e8f4fd; border:1px solid #aad4f0; border-radius:4px; padding:6px; color:#1a4a6b; }</string></property>
         </widget>
        </item>
 
+       <!-- MNT commun -->
        <item>
-        <widget class="QGroupBox" name="grpProfileData">
-         <property name="title"><string>Paramètres</string></property>
-         <layout class="QFormLayout" name="fProfile">
+        <widget class="QGroupBox" name="grpProfileDEM">
+         <property name="title"><string>MNT</string></property>
+         <layout class="QFormLayout" name="fProfileDEM">
           <property name="labelAlignment"><set>Qt::AlignRight</set></property>
-
           <item row="0" column="0">
-           <widget class="QLabel" name="lbl_auto_13"><property name="text"><string>Couche cheminement</string></property>
-            <property name="toolTip"><string>Couche vectorielle (lignes) représentant le tracé du profil à générer (ex. polygone de cheminement topographique).</string></property></widget>
+           <widget class="QLabel" name="lbl_profdem">
+            <property name="text"><string>MNT de référence</string></property>
+            <property name="toolTip"><string>Raster d'élévation utilisé pour extraire les altitudes du profil.</string></property>
+           </widget>
           </item>
           <item row="0" column="1">
-           <widget class="QComboBox" name="comboProfileLayer">
-            <property name="toolTip"><string>Sélectionnez la couche de lignes le long de laquelle le profil sera calculé.</string></property>
+           <widget class="QComboBox" name="comboDEM2">
+            <property name="toolTip"><string>Sélectionnez le MNT depuis lequel extraire les altitudes.</string></property>
            </widget>
           </item>
-
           <item row="1" column="0">
-           <widget class="QLabel" name="lbl_auto_14"><property name="text"><string>MNT de référence</string></property>
-            <property name="toolTip"><string>MNT utilisé pour échantillonner l'altitude. Si la couche de cheminement contient déjà des coordonnées Z, elles seront utilisées en priorité.</string></property></widget>
+           <widget class="QLabel" name="lbl_profdem_margin">
+            <property name="text"><string>Marge emprise MNT (%)</string></property>
+            <property name="toolTip"><string>Agrandit l'emprise de découpe du MNT d'un pourcentage donné autour de la zone d'intérêt. Ex. 20% ajoute 10% de chaque côté.</string></property>
+           </widget>
           </item>
           <item row="1" column="1">
-           <widget class="QComboBox" name="comboDEM2">
-            <property name="toolTip"><string>MNT depuis lequel extraire les altitudes le long du profil.</string></property>
-           </widget>
-          </item>
-
-          <item row="2" column="0">
-           <widget class="QLabel" name="lbl_auto_15"><property name="text"><string>Espacement points (m)</string></property>
-            <property name="toolTip"><string>Distance entre deux points d'échantillonnage successifs le long de la ligne (en mètres). Une valeur trop petite ralentit le calcul ; trop grande perd du détail.</string></property></widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QDoubleSpinBox" name="doubleSpinBoxSpacing">
-            <property name="minimum"><double>0.100000000000000</double></property>
-            <property name="maximum"><double>100.000000000000000</double></property>
-            <property name="value"><double>1.000000000000000</double></property>
-            <property name="toolTip"><string>Pas d'échantillonnage en mètres. Exemple : 1 m pour un LiDAR haute résolution, 5 m pour un MNT 5 m.</string></property>
-           </widget>
-          </item>
-
-          <item row="3" column="0" colspan="2">
-           <widget class="QCheckBox" name="checkBoxInterpolate">
-            <property name="text"><string>Interpoler les valeurs manquantes</string></property>
-            <property name="checked"><bool>true</bool></property>
-            <property name="toolTip"><string>Si coché, les trous (NoData) dans le MNT sont comblés par interpolation linéaire entre les points valides voisins.</string></property>
-           </widget>
-          </item>
-
-          <item row="4" column="0">
-           <widget class="QCheckBox" name="checkBoxMaxGap">
-            <property name="text"><string>Distance max interpolation (m)</string></property>
-            <property name="toolTip"><string>Limite la longueur des gaps comblés. Au-delà de cette distance, le trou n'est pas interpolé (laissé vide dans le CSV).</string></property>
-           </widget>
-          </item>
-          <item row="4" column="1">
-           <widget class="QDoubleSpinBox" name="doubleSpinBoxMaxGap">
-            <property name="enabled"><bool>false</bool></property>
-            <property name="minimum"><double>0.100000000000000</double></property>
-            <property name="maximum"><double>1000.000000000000000</double></property>
-            <property name="value"><double>10.000000000000000</double></property>
-            <property name="toolTip"><string>Distance maximale (m) sur laquelle l'interpolation est appliquée. Les gaps plus grands sont laissés vides.</string></property>
+           <widget class="QSpinBox" name="spinProfileMargin">
+            <property name="minimum"><number>0</number></property>
+            <property name="maximum"><number>200</number></property>
+            <property name="value"><number>20</number></property>
+            <property name="suffix"><string> %</string></property>
+            <property name="toolTip"><string>Pourcentage d'agrandissement de l'emprise autour de la zone de profil. 0 = pas de marge.</string></property>
            </widget>
           </item>
          </layout>
         </widget>
        </item>
 
+       <!-- Sélection du mode -->
        <item>
-        <widget class="QPushButton" name="btnGenerateProfile">
-         <property name="text"><string>▶  Générer le profil développé</string></property>
-         <property name="toolTip"><string>Génère le profil, l'affiche dans l'aperçu ci-dessous et exporte en CSV (+ PNG si matplotlib est disponible).</string></property>
-         <property name="styleSheet"><string>QPushButton { background-color:#9C27B0; color:white; padding:6px; border-radius:4px; font-weight:bold; } QPushButton:hover { background-color:#7B1FA2; }</string></property>
+        <widget class="QTabWidget" name="tabProfileMode">
+         <property name="currentIndex"><number>0</number></property>
+
+         <!-- ═══ CAS 1 : PROFIL PROJETÉ ═══ -->
+         <widget class="QWidget" name="tabProjected">
+          <attribute name="title"><string>📐 Profil projeté</string></attribute>
+          <layout class="QVBoxLayout" name="vProjected">
+
+           <item>
+            <widget class="QLabel" name="lbl_proj_info">
+             <property name="text"><string>Coupe verticale projetée selon un angle α par rapport au Nord. Une ligne de direction α+90° est tracée à la médiane de l'emprise. Le MNT est échantillonné perpendiculairement à cet azimut.</string></property>
+             <property name="wordWrap"><bool>true</bool></property>
+             <property name="styleSheet"><string>QLabel { background:#fff8e1; border:1px solid #ffe082; border-radius:4px; padding:5px; color:#5d3a00; }</string></property>
+            </widget>
+           </item>
+
+           <item>
+            <widget class="QGroupBox" name="grpProjEmprise">
+             <property name="title"><string>Emprise de la coupe</string></property>
+             <layout class="QFormLayout" name="fProjEmprise">
+              <property name="labelAlignment"><set>Qt::AlignRight</set></property>
+              <item row="0" column="0">
+               <widget class="QLabel" name="lbl_emprise_layer">
+                <property name="text"><string>Couche d'emprise</string></property>
+                <property name="toolTip"><string>Couche vectorielle (polygone ou ligne) définissant la zone de la coupe. La médiane de son emprise bounding-box sera utilisée comme origine de la ligne de projection.</string></property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QComboBox" name="comboProjEmprise">
+                <property name="toolTip"><string>Couche vectorielle dont l'emprise définit la zone de la coupe projetée.</string></property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+
+           <item>
+            <widget class="QGroupBox" name="grpProjAngle">
+             <property name="title"><string>Angle de projection α</string></property>
+             <layout class="QVBoxLayout" name="vProjAngle">
+
+              <item>
+               <layout class="QHBoxLayout">
+                <item>
+                 <widget class="QRadioButton" name="radioAngleThconfig">
+                  <property name="text"><string>Lire depuis un fichier .thconfig</string></property>
+                  <property name="checked"><bool>true</bool></property>
+                  <property name="toolTip"><string>Lit l'angle de projection depuis la ligne "export map -projection [elevation XX]" d'un fichier Therion .thconfig.</string></property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+
+              <item>
+               <layout class="QHBoxLayout" name="hThconfigPath">
+                <item>
+                 <widget class="QLineEdit" name="editThconfigPath">
+                  <property name="placeholderText"><string>Chemin vers le fichier .thconfig…</string></property>
+                  <property name="toolTip"><string>Fichier Therion .thconfig contenant une ligne "export map -projection [elevation XX]" dont l'angle XX sera extrait automatiquement.</string></property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnBrowseThconfig">
+                  <property name="text"><string>📂</string></property>
+                  <property name="maximumWidth"><number>32</number></property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnReadThconfig">
+                  <property name="text"><string>Lire α</string></property>
+                  <property name="toolTip"><string>Extrait l'angle de projection depuis le fichier .thconfig sélectionné et le reporte dans le champ ci-dessous.</string></property>
+                  <property name="styleSheet"><string>QPushButton { background:#1976D2; color:white; border-radius:3px; padding:3px 8px; } QPushButton:hover { background:#1565C0; }</string></property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+
+              <item>
+               <layout class="QHBoxLayout">
+                <item>
+                 <widget class="QRadioButton" name="radioAngleManual">
+                  <property name="text"><string>Angle manuel</string></property>
+                  <property name="toolTip"><string>Saisir manuellement l'angle de projection en degrés par rapport au Nord.</string></property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+
+              <item>
+               <layout class="QFormLayout" name="fAngle">
+                <property name="labelAlignment"><set>Qt::AlignRight</set></property>
+                <item row="0" column="0">
+                 <widget class="QLabel" name="lbl_alpha">
+                  <property name="text"><string>α (degrés / Nord)</string></property>
+                  <property name="toolTip"><string>Angle de la direction de projection par rapport au Nord géographique (0–360°). La ligne de coupe sera tracée à α+90° (perpendiculaire à la direction de projection).</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QDoubleSpinBox" name="spinAlpha">
+                  <property name="minimum"><double>0.0</double></property>
+                  <property name="maximum"><double>360.0</double></property>
+                  <property name="value"><double>0.0</double></property>
+                  <property name="suffix"><string> °</string></property>
+                  <property name="toolTip"><string>Angle de projection en degrés. Ex. 17° = direction de Therion "elevation 17". La ligne de coupe sera perpendiculaire à cette direction (α+90°).</string></property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+
+             </layout>
+            </widget>
+           </item>
+
+           <item>
+            <widget class="QGroupBox" name="grpProjOrigin">
+             <property name="title"><string>Origine du profil (décalage optionnel)</string></property>
+             <layout class="QFormLayout" name="fProjOrigin">
+              <property name="labelAlignment"><set>Qt::AlignRight</set></property>
+              <item row="0" column="0">
+               <widget class="QLabel" name="lbl_ox_proj">
+                <property name="text"><string>Décalage X (m)</string></property>
+                <property name="toolTip"><string>Décalage appliqué à toutes les valeurs X (distance le long du profil). Permet d'aligner le profil sur une origine commune avec d'autres coupes.</string></property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QDoubleSpinBox" name="spinProjOffsetX">
+                <property name="minimum"><double>-999999.0</double></property>
+                <property name="maximum"><double>999999.0</double></property>
+                <property name="value"><double>0.0</double></property>
+                <property name="suffix"><string> m</string></property>
+                <property name="toolTip"><string>Valeur ajoutée à toutes les distances X. 0 = origine au premier point du profil.</string></property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="lbl_oy_proj">
+                <property name="text"><string>Décalage Y (m)</string></property>
+                <property name="toolTip"><string>Décalage appliqué à toutes les valeurs d'altitude Y. Permet d'utiliser une altitude de référence différente du datum du MNT.</string></property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QDoubleSpinBox" name="spinProjOffsetY">
+                <property name="minimum"><double>-999999.0</double></property>
+                <property name="maximum"><double>999999.0</double></property>
+                <property name="value"><double>0.0</double></property>
+                <property name="suffix"><string> m</string></property>
+                <property name="toolTip"><string>Valeur ajoutée à toutes les altitudes Y. 0 = altitudes absolues du MNT.</string></property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+
+           <item>
+            <widget class="QGroupBox" name="grpProjSaveLine">
+             <property name="title"><string>Options de sortie</string></property>
+             <layout class="QVBoxLayout">
+              <item>
+               <widget class="QCheckBox" name="chkSaveCutLine">
+                <property name="text"><string>Sauvegarder la ligne de coupe dans un GPKG</string></property>
+                <property name="checked"><bool>true</bool></property>
+                <property name="toolTip"><string>Si coché, la ligne de coupe tracée sur le MNT est exportée dans un GeoPackage (.gpkg) dans le dossier de sortie. Permet de vérifier visuellement la position de la coupe dans QGIS.</string></property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+
+           <item>
+            <widget class="QPushButton" name="btnRunProjected">
+             <property name="text"><string>▶  Générer le profil projeté</string></property>
+             <property name="styleSheet"><string>QPushButton { background-color:#F57C00; color:white; padding:6px; border-radius:4px; font-weight:bold; } QPushButton:hover { background-color:#E65100; }</string></property>
+             <property name="toolTip"><string>Trace la ligne de coupe perpendiculaire à α, extrait le profil MNT et exporte CSV + PNG.</string></property>
+            </widget>
+           </item>
+
+          </layout>
+         </widget>
+
+         <!-- ═══ CAS 2 : PROFIL DÉVELOPPÉ ═══ -->
+         <widget class="QWidget" name="tabDeveloped">
+          <attribute name="title"><string>📏 Profil développé</string></attribute>
+          <layout class="QVBoxLayout" name="vDeveloped">
+
+           <item>
+            <widget class="QLabel" name="lbl_dev_info">
+             <property name="text"><string>Profil altimétrique développé le long d'une polyligne. X = distance cumulée le long de la ligne, Y = altitude extraite du MNT.</string></property>
+             <property name="wordWrap"><bool>true</bool></property>
+             <property name="styleSheet"><string>QLabel { background:#f3e5f5; border:1px solid #ce93d8; border-radius:4px; padding:5px; color:#4a148c; }</string></property>
+            </widget>
+           </item>
+
+           <item>
+            <widget class="QGroupBox" name="grpDevLine">
+             <property name="title"><string>Polyligne de profil</string></property>
+             <layout class="QFormLayout" name="fDevLine">
+              <property name="labelAlignment"><set>Qt::AlignRight</set></property>
+              <item row="0" column="0">
+               <widget class="QLabel" name="lbl_profilelayer">
+                <property name="text"><string>Couche polyligne</string></property>
+                <property name="toolTip"><string>Couche vectorielle de lignes le long de laquelle le profil sera développé (ex. cheminement topographique, coupe manuelle…).</string></property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QComboBox" name="comboProfileLayer">
+                <property name="toolTip"><string>Sélectionnez la couche de lignes servant de tracé au profil développé.</string></property>
+               </widget>
+              </item>
+              <item row="1" column="0" colspan="2">
+               <widget class="QCheckBox" name="chkUseSelection">
+                <property name="text"><string>Utiliser uniquement la sélection active</string></property>
+                <property name="checked"><bool>false</bool></property>
+                <property name="toolTip"><string>Si coché, seules les entités sélectionnées dans la couche polyligne sont utilisées pour générer le profil. Si aucune entité n'est sélectionnée, toutes sont utilisées.</string></property>
+               </widget>
+              </item>
+
+              <item row="2" column="0">
+               <widget class="QLabel" name="lbl_spacing">
+                <property name="text"><string>Espacement points (m)</string></property>
+                <property name="toolTip"><string>Distance entre deux points d'échantillonnage successifs le long de la ligne. Adapter à la résolution du MNT (ex. 1 m pour LiDAR 1 m).</string></property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QDoubleSpinBox" name="doubleSpinBoxSpacing">
+                <property name="minimum"><double>0.1</double></property>
+                <property name="maximum"><double>1000.0</double></property>
+                <property name="value"><double>1.0</double></property>
+                <property name="suffix"><string> m</string></property>
+                <property name="toolTip"><string>Pas d'échantillonnage en mètres le long de la polyligne.</string></property>
+               </widget>
+              </item>
+              <item row="3" column="0" colspan="2">
+               <widget class="QCheckBox" name="checkBoxInterpolate">
+                <property name="text"><string>Interpoler les valeurs NoData</string></property>
+                <property name="checked"><bool>true</bool></property>
+                <property name="toolTip"><string>Comble les trous (NoData) dans le MNT par interpolation linéaire entre les points valides voisins.</string></property>
+               </widget>
+              </item>
+              <item row="4" column="0">
+               <widget class="QCheckBox" name="checkBoxMaxGap">
+                <property name="text"><string>Distance max interpolation (m)</string></property>
+                <property name="toolTip"><string>Limite la longueur des gaps comblés. Au-delà, le trou est laissé vide.</string></property>
+               </widget>
+              </item>
+              <item row="4" column="1">
+               <widget class="QDoubleSpinBox" name="doubleSpinBoxMaxGap">
+                <property name="enabled"><bool>false</bool></property>
+                <property name="minimum"><double>0.1</double></property>
+                <property name="maximum"><double>10000.0</double></property>
+                <property name="value"><double>10.0</double></property>
+                <property name="suffix"><string> m</string></property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+
+           <item>
+            <widget class="QGroupBox" name="grpDevOrigin">
+             <property name="title"><string>Origine du profil (décalage optionnel)</string></property>
+             <layout class="QFormLayout" name="fDevOrigin">
+              <property name="labelAlignment"><set>Qt::AlignRight</set></property>
+              <item row="0" column="0">
+               <widget class="QLabel" name="lbl_ox_dev">
+                <property name="text"><string>Décalage X (m)</string></property>
+                <property name="toolTip"><string>Décalage appliqué à toutes les valeurs X (distance cumulée). Permet d'aligner ce profil sur une origine commune.</string></property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QDoubleSpinBox" name="spinDevOffsetX">
+                <property name="minimum"><double>-999999.0</double></property>
+                <property name="maximum"><double>999999.0</double></property>
+                <property name="value"><double>0.0</double></property>
+                <property name="suffix"><string> m</string></property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="lbl_oy_dev">
+                <property name="text"><string>Décalage Y (m)</string></property>
+                <property name="toolTip"><string>Décalage appliqué à toutes les altitudes Y.</string></property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QDoubleSpinBox" name="spinDevOffsetY">
+                <property name="minimum"><double>-999999.0</double></property>
+                <property name="maximum"><double>999999.0</double></property>
+                <property name="value"><double>0.0</double></property>
+                <property name="suffix"><string> m</string></property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+
+           <item>
+            <widget class="QPushButton" name="btnGenerateProfile">
+             <property name="text"><string>▶  Générer le profil développé</string></property>
+             <property name="styleSheet"><string>QPushButton { background-color:#9C27B0; color:white; padding:6px; border-radius:4px; font-weight:bold; } QPushButton:hover { background-color:#7B1FA2; }</string></property>
+             <property name="toolTip"><string>Échantillonne le MNT le long de la polyligne et exporte le profil en CSV (+ PNG si matplotlib disponible).</string></property>
+            </widget>
+           </item>
+
+          </layout>
+         </widget>
+
         </widget>
        </item>
+
+       <!-- Sortie commune -->
        <item>
-        <widget class="QGraphicsView" name="viewProfile">
-         <property name="minimumSize"><size><width>400</width><height>160</height></size></property>
-         <property name="toolTip"><string>Aperçu du profil altimétrique généré.</string></property>
+        <widget class="QGroupBox" name="grpProfileOutput">
+         <property name="title"><string>Sortie</string></property>
+         <layout class="QFormLayout" name="fProfileOutput">
+          <property name="labelAlignment"><set>Qt::AlignRight</set></property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="lbl_profout">
+            <property name="text"><string>Dossier de sortie</string></property>
+            <property name="toolTip"><string>Dossier où seront écrits le CSV et le PNG du profil.</string></property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <layout class="QHBoxLayout">
+            <item>
+             <widget class="QLineEdit" name="editProfileOutputDir">
+              <property name="placeholderText"><string>Laisser vide → dossier temporaire</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnBrowseProfileOutput">
+              <property name="text"><string>📂</string></property>
+              <property name="maximumWidth"><number>32</number></property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
         </widget>
        </item>
+
+       <!-- Log profil -->
+       <item>
+        <widget class="QTextEdit" name="textLogProfile">
+         <property name="maximumHeight"><number>80</number></property>
+         <property name="readOnly"><bool>true</bool></property>
+         <property name="placeholderText"><string>Journal du traitement profil…</string></property>
+         <property name="styleSheet"><string>QTextEdit { background:#1e1e1e; color:#d4d4d4; font-family:monospace; font-size:10px; border-radius:3px; }</string></property>
+        </widget>
+       </item>
+
       </layout>
      </widget>
+
      <widget class="QWidget" name="tabDolines">
       <attribute name="title"><string>🕳 Dolines</string></attribute>
       <layout class="QVBoxLayout" name="vDolines">

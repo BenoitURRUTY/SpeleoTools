@@ -44,8 +44,18 @@ class SpeleoToolsDialog(QtWidgets.QDialog, FORM_CLASS):
         # Onglet 2
         self.btnBrowse.clicked.connect(self.browse_output)
         self.btnRunThickness.clicked.connect(self.run_thickness)
-        # Onglet 3
-        self.btnGenerateProfile.clicked.connect(self.generate_profile_with_interpolation_and_export)
+        # Onglet 3 — Profils
+        self.btnBrowseThconfig.clicked.connect(self._browse_thconfig)
+        self.btnReadThconfig.clicked.connect(self._read_alpha_from_thconfig)
+        self.radioAngleThconfig.toggled.connect(self._toggle_alpha_source)
+        self.radioAngleManual.toggled.connect(self._toggle_alpha_source)
+        self.checkBoxMaxGap.toggled.connect(self.doubleSpinBoxMaxGap.setEnabled)
+        self.btnBrowseProfileOutput.clicked.connect(
+            lambda: self._browse_dir(self.editProfileOutputDir))
+        self.btnRunProjected.clicked.connect(self.run_projected_profile)
+        self.btnGenerateProfile.clicked.connect(self.run_developed_profile)
+        # Ajouter emprise aux combos vecteur
+        combos_vector_profile = [self.comboProjEmprise]
         # Onglet 4
         self.btnRunProspect.clicked.connect(self.run_mnt_analysis)
         self.btnBrowseOutput.clicked.connect(self.selectOutputDir)
@@ -81,7 +91,7 @@ class SpeleoToolsDialog(QtWidgets.QDialog, FORM_CLASS):
         """Met à jour les listes de couches disponibles dans QGIS.
         Stocke l'ID de la couche comme userData pour éviter les collisions de noms."""
         combos_raster = [self.comboDEM, self.comboDEM2, self.comboProspectDEM, self.comboDolinesDEM]
-        combos_vector = [self.comboCave, self.comboProfileLayer]
+        combos_vector = [self.comboCave, self.comboProfileLayer, self.comboProjEmprise]
 
         # Mémoriser les sélections courantes (par ID)
         def current_id(combo):
@@ -151,6 +161,31 @@ class SpeleoToolsDialog(QtWidgets.QDialog, FORM_CLASS):
                 path += ".gpkg"
             self.lineOutput.setText(path)
 
+    def selectOutputDir(self):
+        """Dossier de sortie pour l'onglet Traitement MNT."""
+        d = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Choisir le dossier de sortie",
+            self.editOutputDir.text().strip() or os.path.expanduser("~"))
+        if d:
+            self.editOutputDir.setText(d)
+
+    def selectOutputDirProfile(self):
+        """Dossier de sortie pour l'onglet Profils."""
+        d = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Choisir le dossier de sortie profil",
+            self.editProfileOutputDir.text().strip() or os.path.expanduser("~"))
+        if d:
+            self.editProfileOutputDir.setText(d)
+
+    def _safe_name(self, name):
+        """Génère un nom de fichier sûr : ASCII, alphanum + tirets, sans underscores multiples."""
+        import unicodedata, re as _re
+        base = os.path.splitext(name)[0]
+        base = unicodedata.normalize('NFKD', base).encode('ascii', 'ignore').decode('ascii')
+        safe = "".join(c if c.isalnum() or c == '-' else '_' for c in base)
+        safe = _re.sub(r'_+', '_', safe).strip('_')
+        return safe or "dem"
+
     def run_thickness(self):
         dem_name = self.comboDEM.currentText()
         cave_name = self.comboCave.currentText()
@@ -191,174 +226,473 @@ class SpeleoToolsDialog(QtWidgets.QDialog, FORM_CLASS):
             
     # ======================================================================
     # --- ONGLET 3 : PROFILS & 3D ---
-    def generate_profile_with_interpolation_and_export(self):
-        """Génère un profil développé à partir d'une ligne et d'un MNT.
-        Exporte en CSV (et PNG si matplotlib est disponible)."""
-        dem_name = self.comboDEM2.currentText()
-        profile_layer_name = self.comboProfileLayer.currentText()
+    # ======================================================================
+    # --- ONGLET 3 : PROFILS ---
 
-        if not dem_name or not profile_layer_name:
-            QtWidgets.QMessageBox.warning(self, "Erreur", "Veuillez sélectionner un MNT et une couche de profil.")
+    def _plog(self, msg):
+        self.textLogProfile.append(msg)
+        QtWidgets.QApplication.processEvents()
+
+    def _toggle_alpha_source(self):
+        """Active/désactive les widgets selon la source de l'angle alpha."""
+        from_file = self.radioAngleThconfig.isChecked()
+        self.editThconfigPath.setEnabled(from_file)
+        self.btnBrowseThconfig.setEnabled(from_file)
+        self.btnReadThconfig.setEnabled(from_file)
+        self.spinAlpha.setEnabled(not from_file)
+
+    def _browse_thconfig(self):
+        f, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Choisir un fichier .thconfig",
+            os.path.expanduser("~"), "Therion config (*.thconfig *.th);;Tous (*)")
+        if f:
+            self.editThconfigPath.setText(f)
+
+    def _read_alpha_from_thconfig(self):
+        """Parse le fichier .thconfig et extrait l'angle de projection."""
+        import re
+        path = self.editThconfigPath.text().strip()
+        if not path or not os.path.isfile(path):
+            QtWidgets.QMessageBox.warning(self, "Fichier introuvable",
+                "Sélectionnez d'abord un fichier .thconfig valide.")
+            return
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            # Cherche : -projection [elevation XX] ou -projection [elevation XX.X]
+            match = re.search(
+                r'-projection\s+\[\s*elevation\s+([\d.]+)\s*\]', content)
+            if match:
+                alpha = float(match.group(1))
+                self.spinAlpha.setValue(alpha)
+                self._plog(f"α = {alpha}° lu depuis {os.path.basename(path)}")
+                # Basculer sur saisie manuelle pour montrer la valeur lue
+                self.radioAngleManual.setChecked(True)
+            else:
+                QtWidgets.QMessageBox.warning(self, "Angle introuvable",
+                    "Aucune ligne '-projection [elevation XX]' trouvée dans le fichier.")
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Erreur lecture", str(e))
+
+    def _profile_output_dir(self):
+        """Retourne le dossier de sortie des profils (crée si besoin)."""
+        d = self.editProfileOutputDir.text().strip() or tempfile.gettempdir()
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def _reproject_to_dem_crs(self, vector_layer, dem_layer):
+        """Reprojette une couche vecteur dans le CRS du MNT si nécessaire.
+        Retourne la couche reprojetée (en mémoire) ou la couche originale."""
+        from qgis.core import QgsCoordinateReferenceSystem
+        dem_crs  = dem_layer.crs()
+        vec_crs  = vector_layer.crs()
+        if vec_crs == dem_crs:
+            return vector_layer
+        self._plog(
+            f"   Reprojection {vector_layer.name()} : "
+            f"{vec_crs.authid()} → {dem_crs.authid()}")
+        try:
+            res = processing.run("native:reprojectlayer", {
+                'INPUT':      vector_layer,
+                'TARGET_CRS': dem_crs,
+                'OUTPUT':     'TEMPORARY_OUTPUT'
+            })
+            out = res.get('OUTPUT')
+            if out and (isinstance(out, QgsVectorLayer) and out.isValid()):
+                return out
+        except Exception as e:
+            self._plog(f"   ⚠ Reprojection impossible : {e} — couche originale utilisée")
+        return vector_layer
+
+    def _export_profile_csv_png(self, distances, elevations, name, out_dir,
+                                  offset_x=0.0, offset_y=0.0):
+        """Exporte le profil en :
+          - CSV  (X_distance_m, Y_altitude_m)
+          - GPKG (points sans CRS — coordonnées X=distance, Y=altitude)
+          - PNG  (si matplotlib disponible)
+        Retourne (csv_path, gpkg_path, png_path_or_None).
+        """
+        import math, csv as _csv
+
+        xs = [d + offset_x for d in distances]
+        ys = [e + offset_y if (e is not None and not math.isnan(e)) else float('nan')
+              for e in elevations]
+
+        # ── CSV ──────────────────────────────────────────────────────
+        csv_path = os.path.join(out_dir, name + ".csv")
+        with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+            w = _csv.writer(csvfile)
+            w.writerow(["X_distance_m", "Y_altitude_m"])
+            for x, y in zip(xs, ys):
+                w.writerow([round(x, 3),
+                             "" if (isinstance(y, float) and math.isnan(y))
+                             else round(y, 3)])
+        self._plog("CSV : " + csv_path)
+
+        # ── GPKG sans CRS (coordonnées profil X/Y) ───────────────────
+        gpkg_path = None
+        try:
+            from qgis.core import (QgsVectorLayer, QgsFeature, QgsGeometry,
+                                   QgsPointXY, QgsField, QgsFields,
+                                   QgsCoordinateReferenceSystem,
+                                   QgsVectorFileWriter, QgsProject,
+                                   QgsWkbTypes)
+            from PyQt5.QtCore import QVariant
+
+            # CRS vide (non géographique) pour un profil X/Y
+            no_crs = QgsCoordinateReferenceSystem()
+
+            fields = QgsFields()
+            fields.append(QgsField("X_dist_m",  QVariant.Double))
+            fields.append(QgsField("Y_alt_m",   QVariant.Double))
+            fields.append(QgsField("pt_index",  QVariant.Int))
+
+            mem_layer = QgsVectorLayer(
+                "Point?crs=", name + "_profil", "memory")
+            mem_layer.setCrs(no_crs)
+            pr = mem_layer.dataProvider()
+            pr.addAttributes(fields)
+            mem_layer.updateFields()
+
+            feats = []
+            for idx, (x, y) in enumerate(zip(xs, ys)):
+                if isinstance(y, float) and math.isnan(y):
+                    continue
+                f = QgsFeature()
+                f.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(x, y)))
+                f.setAttributes([round(x, 3), round(y, 3), idx])
+                feats.append(f)
+            pr.addFeatures(feats)
+
+            gpkg_path = os.path.join(out_dir, name + ".gpkg")
+            opts = QgsVectorFileWriter.SaveVectorOptions()
+            opts.driverName    = "GPKG"
+            opts.fileEncoding  = "UTF-8"
+            opts.layerName     = name
+            # Pas de CRS cible → coordonnées profil brutes
+            err = QgsVectorFileWriter.writeAsVectorFormatV3(
+                mem_layer, gpkg_path,
+                QgsProject.instance().transformContext(), opts)
+            if err[0] == QgsVectorFileWriter.NoError:
+                self._plog("GPKG (sans CRS) : " + gpkg_path)
+            else:
+                self._plog("⚠ GPKG : erreur " + str(err))
+                gpkg_path = None
+        except Exception as e:
+            self._plog("⚠ GPKG non créé : " + str(e))
+
+        # ── PNG (optionnel) ───────────────────────────────────────────
+        png_path = None
+        try:
+            import matplotlib.pyplot as plt
+            px2 = [x for x, y in zip(xs, ys)
+                   if not (isinstance(y, float) and math.isnan(y))]
+            py2 = [y for y in ys
+                   if not (isinstance(y, float) and math.isnan(y))]
+            if px2:
+                fig, ax = plt.subplots(figsize=(14, 5))
+                ax.plot(px2, py2, '-b', linewidth=1.2)
+                ax.fill_between(px2, py2, min(py2), alpha=0.12, color='steelblue')
+                ax.set_title(name, fontsize=12)
+                ax.set_xlabel("Distance (m)")
+                ax.set_ylabel("Altitude (m)")
+                ax.grid(True, linestyle='--', alpha=0.4)
+                fig.tight_layout()
+                png_path = os.path.join(out_dir, name + ".png")
+                fig.savefig(png_path, dpi=200, bbox_inches='tight')
+                plt.close(fig)
+                self._plog("PNG : " + png_path)
+        except ImportError:
+            self._plog("[INFO] matplotlib absent — PNG ignoré.")
+
+        return csv_path, gpkg_path, png_path
+
+    # ── Cas 1 : Profil projeté ────────────────────────────────────────
+    def run_projected_profile(self):
+        import math
+        dem_layer     = self.get_layer_by_combo(self.comboDEM2)
+        emprise_layer = self.get_layer_by_combo(self.comboProjEmprise)
+        if not dem_layer or not dem_layer.isValid():
+            QtWidgets.QMessageBox.warning(self, "Erreur", "Sélectionnez un MNT valide.")
+            return
+        if not emprise_layer or not emprise_layer.isValid():
+            QtWidgets.QMessageBox.warning(self, "Erreur",
+                "Sélectionnez une couche d'emprise valide.")
             return
 
-        dem_layer = self.get_layer_by_name(dem_name)
-        profile_layer = self.get_layer_by_name(profile_layer_name)
-        if dem_layer is None or profile_layer is None:
-            QtWidgets.QMessageBox.warning(self, "Erreur", "Impossible de trouver les couches sélectionnées.")
-            return
+        alpha        = float(self.spinAlpha.value())
+        margin_pct   = float(self.spinProfileMargin.value()) / 100.0
+        offset_x     = float(self.spinProjOffsetX.value())
+        offset_y     = float(self.spinProjOffsetY.value())
+        save_line    = self.chkSaveCutLine.isChecked()
+        out_dir      = self._profile_output_dir()
 
-        spacing = self.doubleSpinBoxSpacing.value()
-        interp = self.checkBoxInterpolate.isChecked()
-        max_gap_distance = self.doubleSpinBoxMaxGap.value() if self.checkBoxMaxGap.isChecked() else None
-
-        output_dir = QtWidgets.QFileDialog.getExistingDirectory(self, "Choisir un dossier de sortie")
-        if not output_dir:
-            return
+        self.textLogProfile.clear()
+        self._plog("Profil projete alpha=" + str(alpha) + "° — " + emprise_layer.name())
 
         try:
-            self.log(f"Génération du profil '{profile_layer_name}' avec le MNT '{dem_name}'...")
-            profile_3d_layer = create_profile_from_line(
-                dem_layer, profile_layer,
-                spacing=spacing if spacing > 0 else None,
-                interp=interp,
-                max_gap_distance=max_gap_distance,
-                add_to_project=True
-            )
+            from qgis.core import (QgsRectangle, QgsPointXY, QgsVectorLayer,
+                                   QgsFeature, QgsGeometry, QgsFields, QgsField,
+                                   QgsVectorFileWriter, QgsProject,
+                                   QgsCoordinateReferenceSystem)
+            from PyQt5.QtCore import QVariant
 
-            if profile_3d_layer is None or profile_3d_layer.featureCount() == 0:
-                QtWidgets.QMessageBox.warning(self, "Erreur", "Aucun profil n'a pu être généré.")
-                return
+            # Reprojeter l'emprise dans le CRS du MNT
+            emprise_repr = self._reproject_to_dem_crs(emprise_layer, dem_layer)
+            dem_crs      = dem_layer.crs()
 
-            # Construction des séries distance / altitude
-            proj = QgsProject.instance()
-            dem_crs = dem_layer.crs()
-            prof_crs = profile_3d_layer.crs()
-            need_transform = (prof_crs != dem_crs)
-            xform_to_dem = QgsCoordinateTransform(prof_crs, dem_crs, proj) if need_transform else None
+            # Emprise + marge
+            bbox   = emprise_repr.extent()
+            margin = max(bbox.width(), bbox.height()) * margin_pct
+            bbox_exp = QgsRectangle(
+                bbox.xMinimum() - margin, bbox.yMinimum() - margin,
+                bbox.xMaximum() + margin, bbox.yMaximum() + margin)
 
-            distances = []
-            elevations = []
-            cum_dist = 0.0
-            prev_xy = None
+            cx        = (bbox_exp.xMinimum() + bbox_exp.xMaximum()) / 2.0
+            cy        = (bbox_exp.yMinimum() + bbox_exp.yMaximum()) / 2.0
+            half_diag = math.hypot(bbox_exp.width(), bbox_exp.height()) / 2.0
+            self._plog("Centre : (" + str(round(cx,1)) + ", " + str(round(cy,1)) + ")")
 
-            for feature in profile_3d_layer.getFeatures():
-                geom = feature.geometry()
-                if geom is None or geom.isEmpty():
-                    continue
-                polylines = geom.asMultiPolyline() if geom.isMultipart() else [geom.asPolyline()]
-                for poly in polylines:
-                    if not poly:
-                        continue
-                    for pt in poly:
-                        try:
-                            x, y = pt.x(), pt.y()
-                        except Exception:
-                            x, y = float(pt[0]), float(pt[1])
-                        z = None
-                        try:
-                            z_cand = pt.z()
-                            if z_cand is not None and not (isinstance(z_cand, float) and math.isnan(z_cand)):
-                                z = float(z_cand)
-                        except Exception:
-                            pass
-                        if z is None:
-                            pt_xy = QgsPointXY(x, y)
-                            if xform_to_dem:
-                                try:
-                                    pt_dem = xform_to_dem.transform(pt_xy)
-                                    pt_xy = QgsPointXY(pt_dem.x(), pt_dem.y())
-                                except Exception:
-                                    pass
-                            try:
-                                z = sample_dem_at_point(dem_layer, pt_xy)
-                            except Exception:
-                                pass
-                        cur_xy = (x, y)
-                        seg_dist = math.hypot(cur_xy[0] - prev_xy[0], cur_xy[1] - prev_xy[1]) if prev_xy else 0.0
-                        cum_dist += seg_dist
-                        distances.append(cum_dist)
-                        elevations.append(z if z is not None else float('nan'))
-                        prev_xy = cur_xy
+            # Ligne de coupe à α+90°
+            cut_az  = (alpha + 90.0) % 360.0
+            rad     = math.radians(cut_az)
+            dx, dy  = math.sin(rad), math.cos(rad)
+            x0, y0  = cx - dx * half_diag, cy - dy * half_diag
+            x1, y1  = cx + dx * half_diag, cy + dy * half_diag
+            self._plog("Coupe az=" + str(round(cut_az,1)) +
+                       "° : (" + str(round(x0,1)) + "," + str(round(y0,1)) +
+                       ") -> (" + str(round(x1,1)) + "," + str(round(y1,1)) + ")")
 
-            if not distances:
-                QtWidgets.QMessageBox.warning(self, "Erreur", "Aucune donnée de profil extraite.")
-                return
+            # ── Sauvegarder la ligne de coupe en GPKG (optionnel) ────
+            line_gpkg_path = None
+            if save_line:
+                try:
+                    fields = QgsFields()
+                    fields.append(QgsField("alpha_deg",   QVariant.Double))
+                    fields.append(QgsField("cut_az_deg",  QVariant.Double))
+                    fields.append(QgsField("longueur_m",  QVariant.Double))
 
-            # Export CSV
-            safe_name = self._safe_name(profile_layer_name)
-            csv_path = os.path.join(output_dir, f"profil_{safe_name}.csv")
-            with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(["Distance (m)", "Altitude (m)"])
-                for dist, elev in zip(distances, elevations):
-                    writer.writerow([round(dist, 3), "" if (isinstance(elev, float) and math.isnan(elev)) else round(elev, 3)])
-            self.log(f"CSV exporté : {csv_path}")
+                    mem_line = QgsVectorLayer(
+                        "LineString?crs=" + dem_crs.authid(),
+                        "ligne_coupe", "memory")
+                    mem_line.setCrs(dem_crs)
+                    pr = mem_line.dataProvider()
+                    pr.addAttributes(fields)
+                    mem_line.updateFields()
 
-            # Export PNG (matplotlib optionnel)
-            png_path = None
-            try:
-                import matplotlib.pyplot as plt
-                plot_dist = [d for d, e in zip(distances, elevations) if not (isinstance(e, float) and math.isnan(e))]
-                plot_elev = [e for e in elevations if not (isinstance(e, float) and math.isnan(e))]
-                if plot_dist:
-                    fig, ax = plt.subplots(figsize=(12, 5))
-                    ax.plot(plot_dist, plot_elev, '-b', linewidth=1.2, label="Profil MNT")
-                    ax.fill_between(plot_dist, plot_elev, min(plot_elev), alpha=0.15, color='blue')
-                    ax.set_title(f"Profil développé — {profile_layer_name}", fontsize=13)
-                    ax.set_xlabel("Distance (m)")
-                    ax.set_ylabel("Altitude (m)")
-                    ax.grid(True, linestyle='--', alpha=0.5)
-                    ax.legend()
-                    fig.tight_layout()
-                    png_path = os.path.join(output_dir, f"profil_{safe_name}.png")
-                    fig.savefig(png_path, dpi=200, bbox_inches='tight')
-                    plt.close(fig)
-                    self.log(f"PNG exporté : {png_path}")
-            except ImportError:
-                self.log("[INFO] matplotlib non disponible — export PNG ignoré.")
+                    feat = QgsFeature()
+                    feat.setGeometry(QgsGeometry.fromPolylineXY(
+                        [QgsPointXY(x0, y0), QgsPointXY(x1, y1)]))
+                    feat.setAttributes([
+                        round(alpha, 3),
+                        round(cut_az, 3),
+                        round(math.hypot(x1-x0, y1-y0), 3)
+                    ])
+                    pr.addFeatures([feat])
 
-            msg = f"Profil généré.\nCSV : {csv_path}"
-            if png_path:
-                msg += f"\nPNG : {png_path}"
-            QtWidgets.QMessageBox.information(self, "Succès", msg)
+                    name_base   = ("ligne_coupe_a" + str(int(alpha)) + "deg_" +
+                                   self._safe_name(dem_layer.name()))
+                    line_gpkg_path = os.path.join(out_dir, name_base + "_ligne.gpkg")
+                    opts = QgsVectorFileWriter.SaveVectorOptions()
+                    opts.driverName   = "GPKG"
+                    opts.fileEncoding = "UTF-8"
+                    opts.layerName    = "ligne_coupe"
+                    err = QgsVectorFileWriter.writeAsVectorFormatV3(
+                        mem_line, line_gpkg_path,
+                        QgsProject.instance().transformContext(), opts)
+                    if err[0] == QgsVectorFileWriter.NoError:
+                        # Charger dans QGIS
+                        lyr = QgsVectorLayer(line_gpkg_path, name_base, "ogr")
+                        if lyr.isValid():
+                            QgsProject.instance().addMapLayer(lyr)
+                        self._plog("Ligne de coupe GPKG : " + line_gpkg_path)
+                    else:
+                        self._plog("⚠ Sauvegarde ligne : erreur " + str(err))
+                        line_gpkg_path = None
+                except Exception as e:
+                    self._plog("⚠ Sauvegarde ligne impossible : " + str(e))
+
+            # ── Echantillonnage MNT ──────────────────────────────────
+            dem_res  = (dem_layer.rasterUnitsPerPixelX() +
+                        dem_layer.rasterUnitsPerPixelY()) / 2.0
+            line_len = math.hypot(x1-x0, y1-y0)
+            n_pts    = max(int(line_len / max(dem_res, 0.01)), 2)
+
+            distances, elevations = [], []
+            for i in range(n_pts + 1):
+                t  = i / n_pts
+                px = x0 + t * (x1 - x0)
+                py = y0 + t * (y1 - y0)
+                try:
+                    z = sample_dem_at_point(dem_layer, QgsPointXY(px, py))
+                except Exception:
+                    z = float('nan')
+                distances.append(t * line_len)
+                elevations.append(z if z is not None else float('nan'))
+
+            valid = sum(1 for e in elevations if not math.isnan(e))
+            self._plog(str(n_pts+1) + " points, " + str(valid) + " valides.")
+
+            name = ("profil_projete_a" + str(int(alpha)) + "deg_" +
+                    self._safe_name(dem_layer.name()))
+            csv_p, gpkg_p, png_p = self._export_profile_csv_png(
+                distances, elevations, name, out_dir, offset_x, offset_y)
+
+            msg = "Profil projete genere.\nCSV : " + csv_p
+            if gpkg_p:      msg += "\nGPKG profil : " + gpkg_p
+            if line_gpkg_path: msg += "\nGPKG ligne : " + line_gpkg_path
+            if png_p:       msg += "\nPNG : " + png_p
+            QtWidgets.QMessageBox.information(self, "Termine", msg)
 
         except Exception as e:
-            self.log(f"Erreur profil : {e}")
-            QtWidgets.QMessageBox.critical(self, "Erreur", f"Une erreur est survenue :\n{e}")
+            self._plog("[ERROR] " + str(e))
+            QtWidgets.QMessageBox.critical(self, "Erreur", str(e))
 
-    # ======================================================================
-    # --- ONGLET 4 : Analyse MNT ---
+    # ── Cas 2 : Profil développé ──────────────────────────────────────
+    def run_developed_profile(self):
+        import math
+        dem_layer     = self.get_layer_by_combo(self.comboDEM2)
+        profile_layer = self.get_layer_by_combo(self.comboProfileLayer)
+        if not dem_layer or not dem_layer.isValid():
+            QtWidgets.QMessageBox.warning(self, "Erreur", "Sélectionnez un MNT valide.")
+            return
+        if not profile_layer or not profile_layer.isValid():
+            QtWidgets.QMessageBox.warning(self, "Erreur", "Sélectionnez une polyligne valide.")
+            return
 
-    
-    def selectOutputDir(self):
-        """Slot pour choisir le dossier de sortie via un dialog."""
-        start = self.editOutputDir.text().strip() or os.path.expanduser("~")
-        dirpath = QtWidgets.QFileDialog.getExistingDirectory(self, "Choisir dossier de sortie", start)
-        if dirpath:
-            self.editOutputDir.setText(dirpath)
+        spacing   = float(self.doubleSpinBoxSpacing.value())
+        do_interp = self.checkBoxInterpolate.isChecked()
+        max_gap   = (float(self.doubleSpinBoxMaxGap.value())
+                     if self.checkBoxMaxGap.isChecked() else None)
+        offset_x  = float(self.spinDevOffsetX.value())
+        offset_y  = float(self.spinDevOffsetY.value())
+        out_dir   = self._profile_output_dir()
 
-    # connexion (à appeler dans ton init/setup UI)
-    # self.btnBrowseOutput.clicked.connect(self.selectOutputDir)
+        self.textLogProfile.clear()
 
-    def _safe_name(self, name):
-        """Génère un nom de fichier sûr : ASCII, alphanum + tirets, sans underscores multiples."""
-        import unicodedata
-        # 1. Supprimer l'extension si présente
-        base = os.path.splitext(name)[0]
-        # 2. Normaliser les caractères accentués → équivalent ASCII
-        base = unicodedata.normalize('NFKD', base)
-        base = base.encode('ascii', 'ignore').decode('ascii')
-        # 3. Remplacer tout caractère non alphanumérique par un underscore
-        safe = "".join(c if c.isalnum() or c == '-' else '_' for c in base)
-        # 4. Supprimer les underscores consécutifs et les bords
-        import re
-        safe = re.sub(r'_+', '_', safe).strip('_')
-        return safe or "dem"
-    
+        # Utiliser la sélection si la case est cochée ET qu'il y a une sélection
+        use_sel    = self.chkUseSelection.isChecked()
+        n_selected = profile_layer.selectedFeatureCount()
 
+        if use_sel and n_selected > 0:
+            self._plog("Selection active : " + str(n_selected) + " entite(s) utilisee(s).")
+            request = QgsFeatureRequest().setFilterFids(
+                profile_layer.selectedFeatureIds())
+        elif use_sel and n_selected == 0:
+            self._plog("⚠ 'Utiliser la selection' coché mais aucune entite selectionnee — toutes utilisees.")
+            request = QgsFeatureRequest()
+        else:
+            self._plog("Toutes les entites de la couche utilisees.")
+            request = QgsFeatureRequest()
 
+        # Reprojeter la polyligne dans le CRS du MNT
+        profile_repr = self._reproject_to_dem_crs(profile_layer, dem_layer)
+        dem_crs      = dem_layer.crs()
+        self._plog("Profil developpe — " + profile_layer.name() +
+                   " / MNT : " + dem_layer.name())
 
-    # Assure-toi d'avoir ces imports en haut du fichier plugin
+        try:
+            from qgis.core import QgsPointXY
+
+            distances, elevations = [], []
+            cum_dist = 0.0
+            prev_xy  = None
+
+            # Si on a reprojeté, on itère la couche reprojetée sur la sélection d'origine
+            if n_selected > 0 and profile_repr is not profile_layer:
+                # Récupérer les fids sélectionnés — après reprojection les fids sont conservés
+                iter_request = QgsFeatureRequest().setFilterFids(
+                    profile_layer.selectedFeatureIds())
+            else:
+                iter_request = request
+
+            for feat in profile_repr.getFeatures(iter_request):
+                geom = feat.geometry()
+                if not geom or geom.isEmpty():
+                    continue
+                polylines = (geom.asMultiPolyline() if geom.isMultipart()
+                             else [geom.asPolyline()])
+
+                for poly in polylines:
+                    if len(poly) < 2:
+                        continue
+
+                    dense_pts = []
+                    for i in range(len(poly) - 1):
+                        try:
+                            ax, ay = poly[i].x(),   poly[i].y()
+                            bx, by = poly[i+1].x(), poly[i+1].y()
+                        except Exception:
+                            ax, ay = float(poly[i][0]),   float(poly[i][1])
+                            bx, by = float(poly[i+1][0]), float(poly[i+1][1])
+                        seg_len = math.hypot(bx-ax, by-ay)
+                        if seg_len == 0:
+                            continue
+                        n_sub = max(1, int(seg_len / spacing))
+                        for k in range(n_sub):
+                            t = k / n_sub
+                            dense_pts.append((ax + t*(bx-ax), ay + t*(by-ay)))
+                    try:
+                        dense_pts.append((poly[-1].x(), poly[-1].y()))
+                    except Exception:
+                        dense_pts.append((float(poly[-1][0]), float(poly[-1][1])))
+
+                    for px, py in dense_pts:
+                        seg = (math.hypot(px - prev_xy[0], py - prev_xy[1])
+                               if prev_xy else 0.0)
+                        cum_dist += seg
+                        prev_xy   = (px, py)
+                        try:
+                            z = sample_dem_at_point(dem_layer, QgsPointXY(px, py))
+                        except Exception:
+                            z = float('nan')
+                        distances.append(cum_dist)
+                        elevations.append(z if z is not None else float('nan'))
+
+            if not distances:
+                QtWidgets.QMessageBox.warning(self, "Erreur",
+                    "Aucun point extrait. Verifiez la couche polyligne.")
+                return
+
+            # Interpolation NoData
+            if do_interp:
+                import numpy as np
+                arr  = np.array(elevations, dtype=float)
+                nans = np.isnan(arr)
+                if nans.any() and not nans.all():
+                    idx      = np.arange(len(arr))
+                    arr_fill = np.interp(idx[nans], idx[~nans], arr[~nans])
+                    if max_gap is not None:
+                        dist_arr = np.array(distances)
+                        valid_idx = idx[~nans]
+                        for j, ni in enumerate(np.where(nans)[0]):
+                            left = np.searchsorted(valid_idx, ni) - 1
+                            right = left + 1
+                            if 0 <= left and right < len(valid_idx):
+                                gap = dist_arr[valid_idx[right]] - dist_arr[valid_idx[left]]
+                                if gap > max_gap:
+                                    arr_fill[j] = float('nan')
+                    arr[nans] = arr_fill
+                    elevations = arr.tolist()
+
+            valid = sum(1 for e in elevations if not math.isnan(float(e)))
+            self._plog(str(len(distances)) + " points, " + str(valid) + " valides.")
+
+            sel_suffix = "_sel" if (use_sel and n_selected > 0) else ""
+            name = ("profil_dev" + sel_suffix + "_" +
+                    self._safe_name(profile_layer.name()) + "_" +
+                    self._safe_name(dem_layer.name()))
+            csv_p, gpkg_p, png_p = self._export_profile_csv_png(
+                distances, elevations, name, out_dir, offset_x, offset_y)
+
+            msg = "Profil developpe genere.\nCSV : " + csv_p
+            if gpkg_p: msg += "\nGPKG : " + gpkg_p
+            if png_p:  msg += "\nPNG : " + png_p
+            QtWidgets.QMessageBox.information(self, "Termine", msg)
+
+        except Exception as e:
+            self._plog("[ERROR] " + str(e))
+            QtWidgets.QMessageBox.critical(self, "Erreur", str(e))
 
     def run_mnt_analysis(self):
         dem_layer = self.get_layer_by_combo(self.comboProspectDEM)
@@ -1077,7 +1411,7 @@ class SpeleoToolsDialog(QtWidgets.QDialog, FORM_CLASS):
         # Outline — fond, tout en bas
         _load(gpkg_map.get('outline2d', outputs_path + 'outline2d.gpkg'),
               "Outline 2D", grp2d, styles.get('outline2d'))
-        self.progressTherion.setValue(100)
+
         # Aires — au-dessus de l'outline
         if areas_gpkg:
             _load(areas_gpkg, "Aires 2D", grp2d, styles['areas2d'])
@@ -1182,4 +1516,338 @@ class SpeleoTools:
             self.dialog = SpeleoToolsDialog(self.iface.mainWindow())
         self.dialog.show()
         self.dialog.raise_()
-        self.dialog.activateWindow()
+        self.dialog.activateWindow()    # ======================================================================
+    # --- ONGLET 3 : PROFILS ---
+
+    def _plog(self, msg):
+        self.textLogProfile.append(msg)
+        QtWidgets.QApplication.processEvents()
+
+    def _toggle_alpha_source(self):
+        from_file = self.radioAngleThconfig.isChecked()
+        self.editThconfigPath.setEnabled(from_file)
+        self.btnBrowseThconfig.setEnabled(from_file)
+        self.btnReadThconfig.setEnabled(from_file)
+        self.spinAlpha.setEnabled(not from_file)
+
+    def _browse_thconfig(self):
+        f, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Choisir un fichier .thconfig",
+            os.path.expanduser("~"), "Therion config (*.thconfig *.th);;Tous (*)")
+        if f:
+            self.editThconfigPath.setText(f)
+
+    def _read_alpha_from_thconfig(self):
+        import re
+        path = self.editThconfigPath.text().strip()
+        if not path or not os.path.isfile(path):
+            QtWidgets.QMessageBox.warning(self, "Fichier introuvable",
+                "Selectionnez d'abord un fichier .thconfig valide.")
+            return
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            match = re.search(r'-projection\s+\[\s*elevation\s+([\d.]+)\s*\]', content)
+            if match:
+                alpha = float(match.group(1))
+                self.spinAlpha.setValue(alpha)
+                self._plog("alpha = " + str(alpha) + " deg lu depuis " + os.path.basename(path))
+                self.radioAngleManual.setChecked(True)
+            else:
+                QtWidgets.QMessageBox.warning(self, "Angle introuvable",
+                    "Aucune ligne '-projection [elevation XX]' trouvee dans le fichier.")
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Erreur lecture", str(e))
+
+    def _profile_output_dir(self):
+        d = self.editProfileOutputDir.text().strip() or tempfile.gettempdir()
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def _export_profile_csv_png(self, distances, elevations, name, out_dir,
+                                  offset_x=0.0, offset_y=0.0):
+        import math, csv as _csv
+        xs = [d + offset_x for d in distances]
+        ys = [e + offset_y if (e is not None and not math.isnan(e)) else float('nan')
+              for e in elevations]
+
+        csv_path = os.path.join(out_dir, name + ".csv")
+        with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+            w = _csv.writer(csvfile)
+            w.writerow(["X_distance_m", "Y_altitude_m"])
+            for x, y in zip(xs, ys):
+                w.writerow([round(x, 3), "" if math.isnan(y) else round(y, 3)])
+        self._plog("CSV : " + csv_path)
+
+        png_path = None
+        try:
+            import matplotlib.pyplot as plt
+            px = [x for x, y in zip(xs, ys) if not math.isnan(y)]
+            py = [y for y in ys if not math.isnan(y)]
+            if px:
+                fig, ax = plt.subplots(figsize=(14, 5))
+                ax.plot(px, py, '-b', linewidth=1.2)
+                ax.fill_between(px, py, min(py), alpha=0.12, color='steelblue')
+                ax.set_title(name, fontsize=12)
+                ax.set_xlabel("Distance (m)")
+                ax.set_ylabel("Altitude (m)")
+                ax.grid(True, linestyle='--', alpha=0.4)
+                fig.tight_layout()
+                png_path = os.path.join(out_dir, name + ".png")
+                fig.savefig(png_path, dpi=200, bbox_inches='tight')
+                plt.close(fig)
+                self._plog("PNG : " + png_path)
+        except ImportError:
+            self._plog("[INFO] matplotlib absent - PNG ignore.")
+        return csv_path, png_path
+
+    # ----------------------------------------------------------------
+    # Cas 1 : Profil projete
+    # ----------------------------------------------------------------
+    def run_projected_profile(self):
+        import math
+        dem_layer     = self.get_layer_by_combo(self.comboDEM2)
+        emprise_layer = self.get_layer_by_combo(self.comboProjEmprise)
+        if not dem_layer or not dem_layer.isValid():
+            QtWidgets.QMessageBox.warning(self, "Erreur", "Selectionnez un MNT valide.")
+            return
+        if not emprise_layer or not emprise_layer.isValid():
+            QtWidgets.QMessageBox.warning(self, "Erreur", "Selectionnez une couche d'emprise valide.")
+            return
+
+        alpha      = float(self.spinAlpha.value())
+        margin_pct = float(self.spinProfileMargin.value()) / 100.0
+        offset_x   = float(self.spinProjOffsetX.value())
+        offset_y   = float(self.spinProjOffsetY.value())
+        out_dir    = self._profile_output_dir()
+
+        self.textLogProfile.clear()
+        self._plog("Profil projete alpha=" + str(alpha) + " deg - emprise : " + emprise_layer.name())
+
+        try:
+            from qgis.core import QgsRectangle, QgsPointXY
+
+            bbox = emprise_layer.extent()
+            w = bbox.width()
+            h = bbox.height()
+            margin = max(w, h) * margin_pct
+            bbox_exp = QgsRectangle(
+                bbox.xMinimum() - margin, bbox.yMinimum() - margin,
+                bbox.xMaximum() + margin, bbox.yMaximum() + margin)
+
+            cx = (bbox_exp.xMinimum() + bbox_exp.xMaximum()) / 2.0
+            cy = (bbox_exp.yMinimum() + bbox_exp.yMaximum()) / 2.0
+            half_diag = math.hypot(bbox_exp.width(), bbox_exp.height()) / 2.0
+            self._plog("Centre : (" + str(round(cx,1)) + ", " + str(round(cy,1)) + ")")
+
+            cut_azimuth = (alpha + 90.0) % 360.0
+            rad = math.radians(cut_azimuth)
+            dx = math.sin(rad)
+            dy = math.cos(rad)
+
+            x0 = cx - dx * half_diag
+            y0 = cy - dy * half_diag
+            x1 = cx + dx * half_diag
+            y1 = cy + dy * half_diag
+            self._plog("Ligne de coupe : (" + str(round(x0,1)) + "," + str(round(y0,1)) +
+                       ") -> (" + str(round(x1,1)) + "," + str(round(y1,1)) + ")")
+
+            dem_res   = (dem_layer.rasterUnitsPerPixelX() + dem_layer.rasterUnitsPerPixelY()) / 2.0
+            line_len  = math.hypot(x1-x0, y1-y0)
+            n_pts     = max(int(line_len / max(dem_res, 0.01)), 2)
+
+            distances  = []
+            elevations = []
+            for i in range(n_pts + 1):
+                t  = i / n_pts
+                px = x0 + t * (x1 - x0)
+                py = y0 + t * (y1 - y0)
+                try:
+                    z = sample_dem_at_point(dem_layer, QgsPointXY(px, py))
+                except Exception:
+                    z = float('nan')
+                distances.append(t * line_len)
+                elevations.append(z if z is not None else float('nan'))
+
+            valid = sum(1 for e in elevations if e is not None and not math.isnan(e))
+            self._plog(str(n_pts+1) + " points, " + str(valid) + " valides.")
+
+            name = ("profil_projete_a" + str(int(alpha)) + "deg_" +
+                    self._safe_name(dem_layer.name()))
+            csv_p, png_p = self._export_profile_csv_png(
+                distances, elevations, name, out_dir, offset_x, offset_y)
+
+            msg = "Profil projete genere.\nCSV : " + csv_p
+            if png_p:
+                msg += "\nPNG : " + png_p
+            QtWidgets.QMessageBox.information(self, "Termine", msg)
+
+        except Exception as e:
+            self._plog("[ERROR] " + str(e))
+            QtWidgets.QMessageBox.critical(self, "Erreur", str(e))
+
+    # ----------------------------------------------------------------
+    # Cas 2 : Profil developpe
+    # ----------------------------------------------------------------
+    def run_developed_profile(self):
+        import math
+        dem_layer     = self.get_layer_by_combo(self.comboDEM2)
+        profile_layer = self.get_layer_by_combo(self.comboProfileLayer)
+        if not dem_layer or not dem_layer.isValid():
+            QtWidgets.QMessageBox.warning(self, "Erreur", "Selectionnez un MNT valide.")
+            return
+        if not profile_layer or not profile_layer.isValid():
+            QtWidgets.QMessageBox.warning(self, "Erreur", "Selectionnez une polyligne valide.")
+            return
+
+        spacing   = float(self.doubleSpinBoxSpacing.value())
+        do_interp = self.checkBoxInterpolate.isChecked()
+        max_gap   = (float(self.doubleSpinBoxMaxGap.value())
+                     if self.checkBoxMaxGap.isChecked() else None)
+        offset_x  = float(self.spinDevOffsetX.value())
+        offset_y  = float(self.spinDevOffsetY.value())
+        out_dir   = self._profile_output_dir()
+
+        self.textLogProfile.clear()
+        self._plog("Profil developpe - " + profile_layer.name() + " / " + dem_layer.name())
+
+        try:
+            from qgis.core import QgsPointXY, QgsCoordinateTransform, QgsProject
+
+            dem_crs    = dem_layer.crs()
+            prof_crs   = profile_layer.crs()
+            need_xform = (prof_crs != dem_crs)
+            xform = (QgsCoordinateTransform(prof_crs, dem_crs, QgsProject.instance())
+                     if need_xform else None)
+
+            distances  = []
+            elevations = []
+            cum_dist   = 0.0
+            prev_xy    = None
+
+            for feat in profile_layer.getFeatures():
+                geom = feat.geometry()
+                if not geom or geom.isEmpty():
+                    continue
+                polylines = (geom.asMultiPolyline() if geom.isMultipart()
+                             else [geom.asPolyline()])
+
+                for poly in polylines:
+                    if len(poly) < 2:
+                        continue
+                    dense_pts = []
+                    for i in range(len(poly) - 1):
+                        try:
+                            ax, ay = poly[i].x(), poly[i].y()
+                            bx, by = poly[i+1].x(), poly[i+1].y()
+                        except Exception:
+                            ax, ay = float(poly[i][0]), float(poly[i][1])
+                            bx, by = float(poly[i+1][0]), float(poly[i+1][1])
+                        seg_len = math.hypot(bx-ax, by-ay)
+                        if seg_len == 0:
+                            continue
+                        n_sub = max(1, int(seg_len / spacing))
+                        for k in range(n_sub):
+                            t = k / n_sub
+                            dense_pts.append((ax + t*(bx-ax), ay + t*(by-ay)))
+                    try:
+                        dense_pts.append((poly[-1].x(), poly[-1].y()))
+                    except Exception:
+                        dense_pts.append((float(poly[-1][0]), float(poly[-1][1])))
+
+                    for px, py in dense_pts:
+                        seg = (math.hypot(px - prev_xy[0], py - prev_xy[1])
+                               if prev_xy else 0.0)
+                        cum_dist += seg
+                        prev_xy   = (px, py)
+
+                        sample_pt = QgsPointXY(px, py)
+                        if xform:
+                            try:
+                                t2 = xform.transform(sample_pt)
+                                sample_pt = QgsPointXY(t2.x(), t2.y())
+                            except Exception:
+                                pass
+                        try:
+                            z = sample_dem_at_point(dem_layer, sample_pt)
+                        except Exception:
+                            z = float('nan')
+
+                        distances.append(cum_dist)
+                        elevations.append(z if z is not None else float('nan'))
+
+            if not distances:
+                QtWidgets.QMessageBox.warning(self, "Erreur",
+                    "Aucun point extrait. Verifiez la couche polyligne.")
+                return
+
+            if do_interp:
+                import numpy as np
+                arr  = np.array(elevations, dtype=float)
+                nans = np.isnan(arr)
+                if nans.any() and not nans.all():
+                    idx      = np.arange(len(arr))
+                    arr_fill = np.interp(idx[nans], idx[~nans], arr[~nans])
+                    if max_gap is not None:
+                        dist_arr = np.array(distances)
+                        for j, ni in enumerate(np.where(nans)[0]):
+                            left  = np.searchsorted(idx[~nans], ni, 'left') - 1
+                            right = left + 1
+                            if left >= 0 and right < len(idx[~nans]):
+                                gap = dist_arr[idx[~nans][right]] - dist_arr[idx[~nans][left]]
+                                if gap > max_gap:
+                                    arr_fill[j] = float('nan')
+                        arr[nans] = arr_fill
+                    else:
+                        arr[nans] = arr_fill
+                elevations = arr.tolist()
+
+            valid = sum(1 for e in elevations if e is not None and not math.isnan(e))
+            self._plog(str(len(distances)) + " points, " + str(valid) + " valides.")
+
+            name = ("profil_dev_" + self._safe_name(profile_layer.name()) +
+                    "_" + self._safe_name(dem_layer.name()))
+            csv_p, png_p = self._export_profile_csv_png(
+                distances, elevations, name, out_dir, offset_x, offset_y)
+
+            msg = "Profil developpe genere.\nCSV : " + csv_p
+            if png_p:
+                msg += "\nPNG : " + png_p
+            QtWidgets.QMessageBox.information(self, "Termine", msg)
+
+        except Exception as e:
+            self._plog("[ERROR] " + str(e))
+            QtWidgets.QMessageBox.critical(self, "Erreur", str(e))
+
+
+# -*- coding: utf-8 -*-
+"""
+SpeleoTools Plugin for QGIS 3
+Auteur : Urruty Benoit
+Description : Interface complète à 4 onglets pour outils spéléo.
+"""
+import csv
+import math
+import tempfile
+import os
+import processing
+from qgis.PyQt import QtWidgets, uic, QtCore
+from qgis.PyQt.QtCore import Qt
+from qgis.core import (
+    QgsProject, QgsRasterLayer, QgsVectorLayer, QgsPoint, QgsPointXY,
+    QgsFeature, QgsFields, QgsField, QgsWkbTypes, QgsGeometry,
+    QgsFeatureSink, QgsDistanceArea, QgsCoordinateTransformContext,
+    QgsFeatureRequest, QgsMessageLog, Qgis, QgsVectorFileWriter,
+    QgsCoordinateTransform
+)
+from PyQt5.QtCore import QVariant
+
+import numpy as np
+import heapq
+
+from .speleo_utils import *
+from .install_dependencies import requires
+
+# Charger l'interface .ui
+FORM_CLASS, _ = uic.loadUiType(os.path.join(os.path.dirname(__file__), 'speleo_dialog.ui'))
+
