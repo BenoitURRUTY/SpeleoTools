@@ -11,8 +11,6 @@ Plugin QGIS complet pour l'analyse, la visualisation et la cartographie de donn�
 - [Prérequis](#prérequis)
 - [Installation](#installation)
   - [Méthode 1 : Installation manuelle](#méthode-1--installation-manuelle)
-  - [Méthode 2 : Installation via le gestionnaire](#méthode-2--installation-via-le-gestionnaire)
-  - [Installation des dépendances Python](#installation-des-dépendances-python)
 - [Utilisation](#utilisation)
   - [Onglet 1 : Import Therion](#onglet-1--import-therion)
   - [Onglet 2 : Épaisseur de roche](#onglet-2--épaisseur-de-roche)
