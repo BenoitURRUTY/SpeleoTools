@@ -19,9 +19,6 @@ Plugin QGIS complet pour l'analyse, la visualisation et la cartographie de donn�
   - [Onglet 3 : Profils topographiques](#onglet-3--profils-topographiques)
   - [Onglet 4 : Analyse MNT et Dolines](#onglet-4--analyse-mnt-et-dolines)
 - [Structure du projet](#structure-du-projet)
-- [Dépendances](#dépendances)
-- [Styles et symbologie](#styles-et-symbologie)
-- [Dépannage](#dépannage)
 - [Auteur](#auteur)
 - [Licence](#licence)
 - [Contributions](#contributions)
@@ -43,7 +40,7 @@ Plugin QGIS complet pour l'analyse, la visualisation et la cartographie de donn�
 
 ## Fonctionnalités
 
-### 🗺️ Import Therion 
+### 🗺️ Import Therion
 basé sur le script développé par Xavier Robert : https://github.com/robertxa/pyThGIS
 
 - Import des exports Therion (Shapefile) → GeoPackage
@@ -55,7 +52,7 @@ basé sur le script développé par Xavier Robert : https://github.com/robertxa/
 - Réparation automatique des géométries invalides
 - Calcul d'altitude depuis MNT pour points et stations
 
-### 📏 Épaisseur de roche 
+### 📏 Épaisseur de roche
 
 - Calcul automatique de l'épaisseur de roche au-dessus d'une cavité
 - Échantillonnage du MNT pour chaque point/sommet
@@ -65,13 +62,65 @@ basé sur le script développé par Xavier Robert : https://github.com/robertxa/
   - `thickness` : épaisseur calculée (m)
   - `fid_src` : identifiant source
 
+### 📊 Profils topographiques
 
-### 📊 Profils topographiques (en développement)
+Deux modes de génération de profils altimétriques. Dans les deux cas : X = distance le long du profil (m), Y = altitude extraite du MNT (m). Les couches vecteur d'entrée sont automatiquement reprojetées dans le CRS du MNT.
 
-- Génération de profils le long d'une polyligne
-- Export CSV avec coordonnées 3D complètes
+#### Mode 1 — Profil projeté
 
-### 🏔️ Analyse MNT 
+Coupe verticale selon un angle de projection α défini dans Therion.
+
+**Paramètres :**
+- **MNT** : raster d'élévation source
+- **Couche d'emprise** : polygone ou ligne définissant la zone de la coupe — la ligne de coupe passe par le **barycentre réel** des géométries
+- **Angle α** : lu automatiquement depuis un fichier `.thconfig` (`-projection [elevation XX]`) ou saisi manuellement
+- **Marge emprise (%)** : agrandit la zone de découpe du MNT autour de l'emprise
+- **Décalages X/Y** : shift des coordonnées pour définir une origine personnalisée
+
+**Principe géométrique :**
+- La ligne de coupe est tracée à **α + 90°** (perpendiculaire à la direction de projection Therion)
+- Elle passe par le barycentre des géométries de la couche d'emprise
+- Sa longueur couvre la diagonale complète de l'emprise agrandie de la marge
+
+**Options de sortie :**
+- ☑ **Sauvegarder la ligne de coupe** : exporte la ligne en GPKG et la charge dans QGIS pour vérification visuelle
+
+**Sorties :**
+```
+profil_projete_aXXdeg_NomMNT.csv       # X=distance, Y=altitude
+profil_projete_aXXdeg_NomMNT.gpkg      # Points profil sans CRS (coordonnées profil)
+profil_projete_aXXdeg_NomMNT.png       # Graphique (si matplotlib installé)
+ligne_coupe_aXXdeg_NomMNT_ligne.gpkg   # Ligne de coupe géoréférencée (optionnel)
+```
+
+#### Mode 2 — Profil développé
+
+Profil altimétrique développé le long d'une polyligne existante.
+
+**Paramètres :**
+- **MNT** : raster d'élévation source
+- **Couche polyligne** : tracé du profil (cheminement, coupe manuelle…)
+- **☑ Utiliser uniquement la sélection active** : si coché, seules les entités sélectionnées dans la couche sont utilisées. Si aucune sélection active, toutes les entités sont utilisées
+- **Espacement points (m)** : pas d'échantillonnage le long de la ligne
+- **☑ Interpoler les valeurs NoData** : comble les trous par interpolation linéaire
+- **Distance max interpolation** : limite la longueur des gaps comblés
+- **Décalages X/Y** : shift des coordonnées
+
+**Sorties :**
+```
+profil_dev[_sel]_NomLigne_NomMNT.csv     # X=distance cumulée, Y=altitude
+profil_dev[_sel]_NomLigne_NomMNT.gpkg    # Points profil sans CRS
+profil_dev[_sel]_NomLigne_NomMNT.png     # Graphique (si matplotlib installé)
+```
+> Le suffixe `_sel` est ajouté quand la sélection est utilisée.
+
+**Format GPKG profil (commun aux deux modes) :**
+
+Les GPKG de profil sont exportés **sans CRS** car leurs coordonnées sont des coordonnées de profil (X = distance, Y = altitude) et non des coordonnées géographiques. Ils sont destinés à être utilisés dans un logiciel de dessin ou de mise en page pour superposer la topographie souterraine.
+
+Attributs : `X_dist_m`, `Y_alt_m`, `pt_index`
+
+### 🏔️ Analyse MNT
 
 **Produits dérivés pour la prospection spéléologique :**
 
@@ -99,9 +148,8 @@ basé sur le script développé par Xavier Robert : https://github.com/robertxa/
 
 - **QGIS 3.10+** ([télécharger](https://qgis.org/))
 - **Python 3.6+** (inclus avec QGIS)
-- Installer SAGA (https://www.sigterritoires.fr/index.php/comment-integrer-saga-a-qgis-a-partir-de-la-version-3-30/) 
+- Installer SAGA (https://www.sigterritoires.fr/index.php/comment-integrer-saga-a-qgis-a-partir-de-la-version-3-30/)
 - RVT (https://plugins.qgis.org/plugins/rvt-qgis/)
-
 
 ---
 
@@ -113,12 +161,11 @@ basé sur le script développé par Xavier Robert : https://github.com/robertxa/
 
 Téléchargez le ZIP et décompressez-le.
 
-
-**3. Activer le plugin dans QGIS**
+**2. Activer le plugin dans QGIS**
 
 - Ouvrez QGIS
 - `Extensions` → `Installer/Gérer les extensions`
-- Onglet `Installer une extensions à partir d'un zip`
+- Onglet `Installer une extension à partir d'un zip`
 
 ---
 
@@ -128,7 +175,7 @@ Convertit les exports Therion (Shapefile) en GeoPackage avec styles.
 
 #### Prérequis
 
-Exporter votre topographie depuis Therion en format **Shapefile** 2D (plan) et 3D (model) dans un même et unique dossier
+Exporter votre topographie depuis Therion en format **Shapefile** 2D (plan) et 3D (model) dans un même et unique dossier.
 
 #### Utilisation
 
@@ -173,13 +220,13 @@ Le plugin :
 
 ```
 Outputs/
-├── areas2d.gpkg         # Aires 2D fusionnées
-├── lines2d.gpkg         # Lignes 2D fusionnées
-├── points2dAlt.gpkg     # Points 2D avec altitude
-├── outline2d.gpkg       # Contour 2D
-├── shots3d.gpkg         # Cheminements 3D
-├── stations3dAlt.gpkg   # Stations 3D avec altitude
-└── walls3d.shp          # Parois 3D (maillage)
+├── areas2dMasked.gpkg     # Aires 2D découpées sur l'outline
+├── lines2dMasked.gpkg     # Lignes 2D découpées sur l'outline
+├── points2dAlt.gpkg       # Points 2D avec altitude
+├── outline2d.gpkg         # Contour 2D
+├── shots3d.gpkg           # Cheminements 3D
+├── stations3dAlt.gpkg     # Stations 3D avec altitude
+└── walls3d.shp            # Parois 3D (maillage — pas de conversion GPKG)
 ```
 
 Les couches sont organisées dans un groupe QGIS :
@@ -231,11 +278,13 @@ Une couche de points avec :
 - `thickness` : épaisseur de roche (m)
 - `fid_src` : ID de l'entité source
 
-
 ---
 
-### Profils topographiques (en dev)
+### Onglet 3 : Profils topographiques
 
+Voir la section [Profils topographiques](#-profils-topographiques) dans les fonctionnalités pour le détail complet des paramètres et sorties.
+
+**Dossier de sortie commun** : sélectionnez un dossier via le bouton 📂. Si laissé vide, les fichiers sont écrits dans le dossier temporaire système.
 
 ---
 
@@ -247,21 +296,21 @@ Génère des produits dérivés pour faciliter la détection d'indices karstique
 
 **2. Dossier de sortie**
 
-Où sauvegarder les rasters générés
+Où sauvegarder les rasters générés.
 
 **3. Choisir les analyses**
 
 - ☑ **Hillshade** : ombrage du relief
   - Azimut : 315° (NW)
   - Altitude : 45°
-  
+
 - ☑ **SVF (Sky View Factor)** : visibilité du ciel (détecte dolines)
   - Directions : 16
   - Rayon : 10 pixels
 
 - ☑ **VAT (Variance Angular Threshold)** : variance micro-relief
   - Lissage : 5
-  
+
 - ☑ **Hillshade + VAT** : combinaison optimale
 
 **4. Lancer l'analyse**
@@ -272,10 +321,10 @@ Cliquez sur **"Analyser MNT"**
 
 ```
 Outputs/
-├── hillshade.tif
-├── svf.tif
-├── vat.tif
-└── hillshade_vat.tif
+├── NomMNT_hillshade.tif
+├── NomMNT_svf.tif
+├── NomMNT_vat.tif
+└── NomMNT_multidh.tif
 ```
 
 **Utilisation :**
@@ -345,13 +394,13 @@ SpeleoTools/
 ├── icon.png                     # Icône du plugin
 │
 ├── styles_therion/              # Styles QML Therion
-│   ├── areas2d.qml
-│   ├── lines2d.qml
-│   ├── points2d.qml
-│   ├── outline2d.qml
-│   ├── shots3d.qml
-│   ├── stations3d.qml
-│   └── walls3d.qml
+│   ├── Style_Area2D.qml
+│   ├── Style_Ligne2D.qml
+│   ├── Style_Point2D.qml
+│   ├── Style_Outline2D.qml
+│   ├── Style_Shots3D.qml
+│   ├── Style_Stations3D.qml
+│   └── Style_Wall3D.qml
 │
 └── README.md                    # Ce fichier
 ```
@@ -366,7 +415,6 @@ SpeleoTools/
 - Interface graphique Qt
 - Algorithmes d'analyse MNT et karstologie
 - Intégration Therion
-
 
 ---
 
@@ -385,11 +433,9 @@ Ce projet est sous licence **CC BY-NC-SA 4.0**.
 
 #### Selon les conditions suivantes :
 
-- **Attribution** — Vous devez créditer l'œuvre, intégrer un lien vers la licence et indiquer si des modifications ont été effectuées. Vous devez indiquer ces informations par tous les moyens raisonnables, sans toutefois suggérer que l'Offrant vous soutient ou soutient la façon dont vous avez utilisé son œuvre.
-
-- **Pas d'Utilisation Commerciale** — Vous n'êtes pas autorisé à faire un usage commercial de cette œuvre, tout ou partie du matériel la composant.
-
-- **Partage dans les Mêmes Conditions** — Dans le cas où vous effectuez un remix, que vous transformez, ou créez à partir du matériel composant l'œuvre originale, vous devez diffuser l'œuvre modifiée dans les mêmes conditions, c'est-à-dire avec la même licence avec laquelle l'œuvre originale a été diffusée.
+- **Attribution** — Vous devez créditer l'œuvre, intégrer un lien vers la licence et indiquer si des modifications ont été effectuées.
+- **Pas d'Utilisation Commerciale** — Vous n'êtes pas autorisé à faire un usage commercial de cette œuvre.
+- **Partage dans les Mêmes Conditions** — Toute œuvre dérivée doit être diffusée sous la même licence.
 
 #### Texte complet de la licence :
 [https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.fr](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.fr)
@@ -403,7 +449,7 @@ Ce projet est sous licence **CC BY-NC-SA 4.0**.
 
 Robert X. (2025), pyThGIS, a Python code to clean the shp Therion output. DOI:10.5281/zenodo.15078040
 
-
+---
 
 ## Contributions
 
@@ -420,4 +466,3 @@ Les contributions sont les bienvenues !
 ---
 
 **Bonne cartographie ! 🗺️🔦**
-

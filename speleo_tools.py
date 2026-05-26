@@ -448,10 +448,26 @@ class SpeleoToolsDialog(QtWidgets.QDialog, FORM_CLASS):
                 bbox.xMinimum() - margin, bbox.yMinimum() - margin,
                 bbox.xMaximum() + margin, bbox.yMaximum() + margin)
 
-            cx        = (bbox_exp.xMinimum() + bbox_exp.xMaximum()) / 2.0
-            cy        = (bbox_exp.yMinimum() + bbox_exp.yMaximum()) / 2.0
+            # Barycentre réel des géométries (union puis centroïde)
+            from qgis.core import QgsGeometry
+            all_geoms = [f.geometry() for f in emprise_repr.getFeatures()
+                         if f.geometry() and not f.geometry().isEmpty()]
+            if all_geoms:
+                union_geom = all_geoms[0]
+                for g in all_geoms[1:]:
+                    union_geom = union_geom.combine(g)
+                centroid  = union_geom.centroid().asPoint()
+                cx, cy    = centroid.x(), centroid.y()
+                self._plog("Barycentre geometries : (" +
+                           str(round(cx,1)) + ", " + str(round(cy,1)) + ")")
+            else:
+                # Fallback : centre de la bounding box
+                cx = (bbox_exp.xMinimum() + bbox_exp.xMaximum()) / 2.0
+                cy = (bbox_exp.yMinimum() + bbox_exp.yMaximum()) / 2.0
+                self._plog("Fallback centre bbox : (" +
+                           str(round(cx,1)) + ", " + str(round(cy,1)) + ")")
+
             half_diag = math.hypot(bbox_exp.width(), bbox_exp.height()) / 2.0
-            self._plog("Centre : (" + str(round(cx,1)) + ", " + str(round(cy,1)) + ")")
 
             # Ligne de coupe à α+90°
             cut_az  = (alpha + 90.0) % 360.0
